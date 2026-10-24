@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Notify",
+    "slug": "notify-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "notify",
+    "icon": "./assets/icon-only.png",
+    "splash": {
+      "image": "./assets/splash-dark.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#20130D"
+    },
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.notify.app"
+    },
+    "android": {
+      "package": "com.notify.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon-foreground.png",
+        "backgroundImage": "./assets/icon-background.png",
+        "backgroundColor": "#20130D"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "color": "#F2B23D",
+          "defaultChannel": "notify-reminders",
+          "enableRemoteNotifications": false
+        }
+      ]
+    ]
+  }
+}
