@@ -34,14 +34,14 @@ jobs:
         run: npm install
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
-      - name: Build arm64 debug APK
+      - name: Build standalone arm64 release APK
         working-directory: android
-        run: ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a
-      - name: Upload APK artifact
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a
+      - name: Upload standalone APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: notify-android-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: notify-android-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
       - name: Publish APK to rolling release
@@ -49,7 +49,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if gh release view android-latest >/dev/null 2>&1; then
-            gh release upload android-latest android/app/build/outputs/apk/debug/app-debug.apk --clobber
+            gh release upload android-latest android/app/build/outputs/apk/release/app-release.apk --clobber
           else
-            gh release create android-latest android/app/build/outputs/apk/debug/app-debug.apk --prerelease --title "Notify Android — Latest build" --notes "Latest automatically built arm64 Notify Android APK for testing."
+            gh release create android-latest android/app/build/outputs/apk/release/app-release.apk --prerelease --title "Notify Android — Latest build" --notes "Standalone arm64 release APK for testing."
           fi
