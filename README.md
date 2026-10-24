@@ -4,7 +4,6 @@
 
 <p align="center">
   <a href="https://github.com/Filz249/notify/releases/latest/download/Notify.apk"><img src="assets/btn-android.svg" alt="Download for Android" height="56"></a>
-  <a href="https://Filz249.github.io/notify/"><img src="assets/btn-web.svg" alt="Open web demo" height="56"></a>
 </p>
 
 <p align="center">
