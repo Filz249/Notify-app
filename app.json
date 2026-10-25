@@ -34,7 +34,8 @@
           "defaultChannel": "notify-reminders",
           "enableRemoteNotifications": false
         }
-      ]
+      ],
+      "expo-sharing"
     ]
   }
 }

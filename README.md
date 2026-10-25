@@ -23,12 +23,16 @@ Notify is the Android/iOS mobile app project. It is built with **React Native + 
 ## Features in this first mobile iteration
 
 - Local-first notes saved in on-device SQLite.
-- Notes, to-do lists, checklists, shopping lists, lyrics, poems, sketches and brainstorm notes.
-- Search and feed filters, important-note pinning, deletion and editing.
+- Notes, to-do lists, checklists, shopping lists, lyrics, poems, sketches, brainstorm notes and collected quotes.
+- Quote cards with built-in quotation marks and a separate, searchable author field.
+- Search, collections and tags, important-note pinning, Today/Upcoming views, editing and recoverable Trash.
 - Combined task/checklist notes and dedicated shopping lists with aisle suggestions and price subtotals.
-- Touch sketch canvas with configurable pen colors, solid/dashed/dotted strokes, multiple widths and canvas backgrounds.
+- Touch sketch canvas with preset colors and a custom color wheel, brightness and hex controls, solid/dashed/dotted strokes, multiple widths, canvas backgrounds, stroke eraser, undo/redo and PNG export.
+- Compact checklists with progress, expandable additional notes and a date/time reminder picker.
 - Three saved appearance themes: Espresso, Midnight and Forest; responsive home layout for different screen sizes.
-- Local reminder notifications.
+- Automatic draft recovery, separate from saved notes.
+- One-time, daily and weekly local reminders, with 10-minute and 1-hour snooze.
+- JSON backups and safe merge imports, including drafts and Trash.
 - Settings menu with links to check releases and download the latest Android APK (installation is confirmed by Android).
 - Espresso backgrounds, cream typography, amber accents and colorful note-type icons.
 
@@ -58,6 +62,46 @@ npm.cmd run start
 ```
 
 If PowerShell blocks `npm.ps1`, use `npm.cmd` and `npx.cmd` as above. To launch in an Android emulator, install Android Studio and run `npm.cmd run android`.
+
+### Browser preview
+
+```sh
+npm install
+npm run web
+```
+
+Open the localhost URL printed by Expo. The preview uses the same app screens and
+stores notes in local browser storage, separately from your phone's SQLite data.
+Browser reminders run while Notify is open and resume after a reload. Allow
+desktop notifications for system alerts; unsupported browsers or denied permission
+use an in-app reminder instead. Closing Notify or suspending the computer can
+delay browser reminders until it is opened again. Native scheduled notifications
+still need an Android or iOS device to test.
+
+The editor supports plain, lined, and dotted paper, with a reversible clear-text
+action. Open **Remember this later** to choose a local date and time. Reminder
+changes take effect when the note is saved.
+
+Drafts save while you type and appear in **Continue writing** after reopening.
+**Library** keeps saved notes and drafts together. Filters sit below **Your notes**.
+**Create** is a separate section with the colored note-format buttons.
+**Save** publishes the draft to your library and activates its reminder. Open the
+menu beside **Your notes** to switch to Today or Upcoming. Today includes overdue
+reminders and unfinished lists without a reminder.
+
+Use **Organize** inside an editor to add a collection or comma-separated tags.
+**Settings → Trash & backups** restores deleted notes and exports/imports JSON.
+Imports keep existing data: identical records are skipped and conflicts become
+separate copies. Imported reminders stay paused until each note is saved. Trash
+is kept until explicitly deleted forever. Backup files include note content.
+
+Daily and weekly reminders follow local calendar time. Snoozing one occurrence
+keeps the repeating schedule. Native notifications, file selection and sharing
+need a new app build and device testing; the added Expo modules are included in
+package.json and app.json.
+
+Run `npm test` for reminder scheduling, recurrence, draft persistence, safe backup
+merging, agenda filtering, eraser geometry, image markup and color checks.
 
 ## Project layout
 

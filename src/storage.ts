@@ -1,7 +1,7 @@
-import * as SQLite from 'expo-sqlite';
-import type { Note } from './types';
+import * as SQLite from "expo-sqlite";
+import type { Note } from "./types";
 
-const databasePromise = SQLite.openDatabaseAsync('notify.db');
+const databasePromise = SQLite.openDatabaseAsync("notify.db");
 
 async function getDb() {
   const db = await databasePromise;
@@ -24,7 +24,7 @@ async function getDb() {
 export async function loadNotes(): Promise<Note[]> {
   const db = await getDb();
   const rows = await db.getAllAsync<{ note_json: string }>(
-    'SELECT note_json FROM notes ORDER BY updated_at DESC',
+    "SELECT note_json FROM notes ORDER BY updated_at DESC",
   );
   return rows.map((row) => JSON.parse(row.note_json) as Note);
 }
@@ -42,13 +42,30 @@ export async function saveNote(note: Note): Promise<void> {
 
 export async function deleteNote(id: string): Promise<void> {
   const db = await getDb();
-  await db.runAsync('DELETE FROM notes WHERE id = ?', id);
+  await db.runAsync("DELETE FROM notes WHERE id = ?", id);
 }
 
-export async function getSetting(key: string, fallback: string): Promise<string> {
+export async function saveNotes(notes: Note[]): Promise<void> {
+  const db = await getDb();
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    for (const note of notes)
+      await transaction.runAsync(
+        "INSERT INTO notes (id, note_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET note_json = excluded.note_json, updated_at = excluded.updated_at",
+        note.id,
+        JSON.stringify(note),
+        note.updatedAt,
+      );
+  });
+}
+
+export async function getSetting(
+  key: string,
+  fallback: string,
+): Promise<string> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ value: string }>(
-    'SELECT value FROM settings WHERE key = ?', key,
+    "SELECT value FROM settings WHERE key = ?",
+    key,
   );
   return row?.value ?? fallback;
 }
@@ -56,7 +73,8 @@ export async function getSetting(key: string, fallback: string): Promise<string>
 export async function setSetting(key: string, value: string): Promise<void> {
   const db = await getDb();
   await db.runAsync(
-    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-    key, value,
+    "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    key,
+    value,
   );
 }
