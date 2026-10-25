@@ -292,10 +292,10 @@ export default function App() {
     <Pressable accessibilityLabel="Create new note" onPress={() => setTypePicker(true)} style={({ pressed }) => [s.fab, { backgroundColor: palette.accent }, pressed && s.pressed]}><Plus color={palette.bg} size={29} strokeWidth={2.4} /></Pressable>
 
     <Modal visible={typePicker} transparent animationType="slide" onRequestClose={() => setTypePicker(false)}>
-      <Pressable style={s.sheetShade} onPress={() => setTypePicker(false)}><View style={s.sheet} onStartShouldSetResponder={() => true}>
-        <View style={s.sheetHandle} /><View style={s.sheetHead}><Text style={s.sheetTitle}>Create something</Text><Pressable onPress={() => setTypePicker(false)}><X color={C.muted} size={22} /></Pressable></View>
-        <View style={s.typeGrid}>{TYPES.map((type) => <Pressable key={type.id} onPress={() => openNew(type.id)} style={s.typeOption}>
-          <View style={[s.typeOptionGlyph, { borderBottomColor: type.color }]}><Glyph type={type.id} size={23} /></View><Text style={s.typeOptionTitle}>{type.label}</Text><Text style={s.typeOptionDesc}>{type.id === 'shopping' ? 'Aisles & budget' : type.id === 'sketch' ? 'Draw an idea' : type.id === 'brainstorm' ? 'Explore connections' : type.id === 'lyrics' || type.id === 'poem' ? 'Write creatively' : type.id === 'checklist' || type.id === 'todo' ? 'Track progress' : 'Capture a thought'}</Text>
+      <Pressable style={s.sheetShade} onPress={() => setTypePicker(false)}><View style={[s.sheet, { backgroundColor: palette.panel, borderColor: palette.line }]} onStartShouldSetResponder={() => true}>
+        <View style={s.sheetHandle} /><View style={s.sheetHead}><Text style={[s.sheetTitle, { color: palette.cream }]}>Create something</Text><Pressable onPress={() => setTypePicker(false)}><X color={C.muted} size={22} /></Pressable></View>
+        <View style={s.typeGrid}>{TYPES.map((type) => <Pressable key={type.id} onPress={() => openNew(type.id)} style={[s.typeOption, { backgroundColor: palette.panel2, borderColor: palette.line }]}>
+          <View style={[s.typeOptionGlyph, { borderBottomColor: type.color }]}><Glyph type={type.id} size={23} /></View><Text style={[s.typeOptionTitle, { color: palette.cream }]}>{type.label}</Text><Text style={[s.typeOptionDesc, { color: palette.muted }]}>{type.id === 'shopping' ? 'Aisles & budget' : type.id === 'sketch' ? 'Draw an idea' : type.id === 'brainstorm' ? 'Explore connections' : type.id === 'lyrics' || type.id === 'poem' ? 'Write creatively' : type.id === 'checklist' || type.id === 'todo' ? 'Track progress' : 'Capture a thought'}</Text>
         </Pressable>)}</View>
       </View></Pressable>
     </Modal>
@@ -350,7 +350,7 @@ export default function App() {
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.editorScroll}>
             <TextInput value={draft.title} onChangeText={(title) => patch({ title })} placeholder={draft.type === 'shopping' ? 'Shopping for…' : 'Give this a title'} placeholderTextColor={palette.muted} style={[s.titleInput, { color: palette.cream }]} multiline />
             {draft.important ? <View style={s.importantPill}><Star color={C.bg} fill={C.bg} size={13} /><Text style={s.importantPillText}>Marked important</Text></View> : null}
-            {['checklist', 'todo', 'shopping'].includes(draft.type) ? <View style={s.listSection}>
+            {['checklist', 'todo', 'shopping'].includes(draft.type) ? <View style={[s.listSection, { backgroundColor: palette.panel, borderColor: palette.line }]}>
               {draft.type === 'shopping' ? <View style={s.totalRow}><View><Text style={s.totalLabel}>ESTIMATED TOTAL</Text><Text style={s.totalAmount}>{money(shoppingTotal)}</Text></View><ShoppingBag color={C.orange} size={27} /></View> : <Text style={s.fieldLabel}>YOUR ITEMS · {draft.items.filter((i) => i.checked).length}/{draft.items.length} done</Text>}
               {Object.entries(groupedItems).map(([category, items]) => <View key={category}>
                 {draft.type === 'shopping' ? <Text style={s.aisleTitle}>{category.toUpperCase()}</Text> : null}
@@ -361,9 +361,9 @@ export default function App() {
                   <Pressable onPress={() => patch({ items: draft.items.filter((i) => i.id !== item.id) })} hitSlop={8}><X color={C.muted} size={17} /></Pressable>
                 </View>)}
               </View>)}
-              <View style={s.addItemRow}>
-                <TextInput value={newItem} onChangeText={setNewItem} onSubmitEditing={addItem} placeholder={draft.type === 'shopping' ? 'Add an item…' : 'Add a task…'} placeholderTextColor={C.muted} style={s.addItemInput} returnKeyType="done" />
-                {draft.type === 'shopping' ? <TextInput value={newPrice} onChangeText={setNewPrice} placeholder="€" placeholderTextColor={C.muted} keyboardType="decimal-pad" style={s.priceInput} /> : null}
+              <View style={[s.addItemRow, { backgroundColor: palette.bg, borderColor: palette.line }]}>
+                <TextInput value={newItem} onChangeText={setNewItem} onSubmitEditing={addItem} placeholder={draft.type === 'shopping' ? 'Add an item…' : 'Add a task…'} placeholderTextColor={palette.muted} style={[s.addItemInput, { color: palette.cream }]} returnKeyType="done" />
+                {draft.type === 'shopping' ? <TextInput value={newPrice} onChangeText={setNewPrice} placeholder="€" placeholderTextColor={palette.muted} keyboardType="decimal-pad" style={[s.priceInput, { color: palette.cream, borderColor: palette.line }]} /> : null}
                 <Pressable onPress={addItem} style={s.addItemButton}><Plus color={C.bg} size={20} /></Pressable>
               </View>
               {draft.type === 'shopping' ? <Text style={s.hint}>Items are grouped by likely supermarket aisle. Enter prices to estimate your total.</Text> : null}
@@ -382,10 +382,11 @@ export default function App() {
               </View>
               <SketchPad paths={draft.sketchPaths} onChange={(sketchPaths) => patch({ sketchPaths })} color={draft.sketchColor || C.amber} width={draft.sketchWidth || 3} style={draft.sketchStyle || 'solid'} backgroundColor={draft.sketchBackground || C.panel} />
             </View> : null}
-            <Text style={[s.fieldLabel, { color: palette.muted }]}>{draft.type === 'lyrics' ? 'LYRICS' : draft.type === 'poem' ? 'YOUR POEM' : draft.type === 'brainstorm' ? 'YOUR IDEAS' : 'NOTE'}</Text>
-            <TextInput value={draft.body} onChangeText={(body) => patch({ body })} placeholder={draft.type === 'lyrics' ? 'Verse, chorus, a line you don’t want to lose…' : draft.type === 'poem' ? 'Begin anywhere. Let the words arrive…' : draft.type === 'brainstorm' ? 'Capture an idea, question or possibility…' : 'Write anything worth remembering…'} placeholderTextColor={palette.muted} style={[s.bodyInput, { color: palette.cream }, (draft.type === 'poem' || draft.type === 'lyrics') && s.creativeBody]} multiline textAlignVertical="top" />
-            <View style={s.reminderCard}>
-              <View style={s.reminderIcon}><AlarmClock color={C.amber} size={21} /></View><View style={{ flex: 1 }}><Text style={s.reminderTitle}>{draft.reminderAt ? 'Reminder set' : 'Remember this later'}</Text><Text style={s.reminderSub}>{draft.reminderAt ? new Date(draft.reminderAt).toLocaleString() : 'Choose a gentle nudge'}</Text></View>
+            <Text style={[s.fieldLabel, { color: palette.muted }]}>{draft.type === 'lyrics' ? 'LYRICS' : draft.type === 'poem' ? 'YOUR POEM' : draft.type === 'brainstorm' ? 'YOUR IDEAS' : draft.type === 'todo' || draft.type === 'checklist' ? 'YOUR TASKS' : 'NOTE'}</Text>
+            {draft.type === 'brainstorm' ? <View style={s.promptRow}>{[{label:'What if…',text:'What if '},{label:'Why does…',text:'Why does '},{label:'Next step',text:'Next step: '}].map((prompt) => <Pressable key={prompt.label} onPress={() => patch({ body: draft.body + (draft.body && !draft.body.endsWith('\n') ? '\n\n' : '') + prompt.text })} style={[s.promptChip, { borderColor: palette.line, backgroundColor: palette.panel2 }]}><Text style={[s.promptText, { color: palette.cream }]}>{prompt.label}</Text></Pressable>)}</View> : null}
+            <TextInput value={draft.body} onChangeText={(body) => patch({ body })} placeholder={draft.type === 'lyrics' ? 'Verse, chorus, a line you don’t want to lose…' : draft.type === 'poem' ? 'Begin anywhere. Let the words arrive…' : draft.type === 'brainstorm' ? 'Capture an idea, question or possibility…' : 'Write anything worth remembering…'} placeholderTextColor={palette.muted} style={[s.bodyInput, { color: palette.cream }, draft.type === 'poem' ? s.poemBody : draft.type === 'lyrics' ? s.lyricBody : null]} multiline textAlignVertical="top" />
+            <View style={[s.reminderCard, { backgroundColor: palette.panel, borderColor: palette.line }]}>
+              <View style={s.reminderIcon}><AlarmClock color={C.amber} size={21} /></View><View style={{ flex: 1 }}><Text style={[s.reminderTitle, { color: palette.cream }]}>{draft.reminderAt ? 'Reminder set' : 'Remember this later'}</Text><Text style={[s.reminderSub, { color: palette.muted }]}>{draft.reminderAt ? new Date(draft.reminderAt).toLocaleString() : 'Choose a gentle nudge'}</Text></View>
               {draft.reminderAt ? <Pressable onPress={() => patch({ reminderAt: undefined, notificationId: undefined })}><X color={C.muted} size={20} /></Pressable> : null}
             </View>
             <View style={s.reminderOptions}>
@@ -499,6 +500,11 @@ const s = StyleSheet.create({
   clearText: { color: C.amber, fontSize: 11, fontWeight: '700' },
   bodyInput: { minHeight: 170, color: C.cream, fontSize: 15, lineHeight: 24, paddingHorizontal: 0, paddingTop: 3, paddingBottom: 12 },
   creativeBody: { fontSize: 18, lineHeight: 30 },
+  poemBody: { fontSize: 19, lineHeight: 32, textAlign: 'center', fontStyle: 'italic' },
+  lyricBody: { fontSize: 17, lineHeight: 28, letterSpacing: .3 },
+  promptRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 5 },
+  promptChip: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 7 },
+  promptText: { fontSize: 10, fontWeight: '700' },
   reminderCard: { marginTop: 17, borderWidth: 1, borderColor: C.line, backgroundColor: C.panel, borderRadius: 15, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 10 },
   reminderIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#493116', alignItems: 'center', justifyContent: 'center' },
   reminderTitle: { color: C.cream, fontWeight: '700', fontSize: 12 },
