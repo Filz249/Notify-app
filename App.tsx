@@ -339,16 +339,16 @@ export default function App() {
     </Modal>
 
     <Modal visible={editor} animationType="slide" onRequestClose={() => setEditor(false)}>
-      <SafeAreaView style={s.editorSafe}>
+      <SafeAreaView style={[s.editorSafe, { backgroundColor: palette.bg }]}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={s.editorHeader}>
-            <Pressable onPress={() => setEditor(false)} style={s.headerAction}><ArrowLeft color={C.cream} size={22} /></Pressable>
+          <View style={[s.editorHeader, { backgroundColor: palette.bg, borderBottomColor: palette.line }]}>
+            <Pressable onPress={() => setEditor(false)} style={[s.headerAction, { backgroundColor: palette.panel, borderColor: palette.line }]}><ArrowLeft color={palette.cream} size={22} /></Pressable>
             <View style={s.editorHeaderTitle}><Glyph type={draft.type} size={21} /><Text style={s.editorType}>{typeInfo(draft.type).label}</Text></View>
-            <Pressable onPress={() => patch({ important: !draft.important })} style={[s.headerAction, draft.important && s.starActive]}><Star color={draft.important ? C.amber : C.muted} fill={draft.important ? C.amber : 'transparent'} size={20} /></Pressable>
-            <Pressable onPress={save} style={s.saveButton}><Check color={C.bg} size={18} /><Text style={s.saveButtonText}>Save</Text></Pressable>
+            <Pressable onPress={() => patch({ important: !draft.important })} style={[s.headerAction, { backgroundColor: draft.important ? palette.panel2 : palette.panel, borderColor: palette.line }, draft.important && s.starActive]}><Star color={draft.important ? palette.accent : palette.muted} fill={draft.important ? palette.accent : 'transparent'} size={20} /></Pressable>
+            <Pressable onPress={save} style={[s.saveButton, { backgroundColor: palette.accent }]}><Check color={palette.bg} size={18} /><Text style={[s.saveButtonText, { color: palette.bg }]}>Save</Text></Pressable>
           </View>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.editorScroll}>
-            <TextInput value={draft.title} onChangeText={(title) => patch({ title })} placeholder={draft.type === 'shopping' ? 'Shopping for…' : 'Give this a title'} placeholderTextColor={C.muted} style={s.titleInput} multiline />
+            <TextInput value={draft.title} onChangeText={(title) => patch({ title })} placeholder={draft.type === 'shopping' ? 'Shopping for…' : 'Give this a title'} placeholderTextColor={palette.muted} style={[s.titleInput, { color: palette.cream }]} multiline />
             {draft.important ? <View style={s.importantPill}><Star color={C.bg} fill={C.bg} size={13} /><Text style={s.importantPillText}>Marked important</Text></View> : null}
             {['checklist', 'todo', 'shopping'].includes(draft.type) ? <View style={s.listSection}>
               {draft.type === 'shopping' ? <View style={s.totalRow}><View><Text style={s.totalLabel}>ESTIMATED TOTAL</Text><Text style={s.totalAmount}>{money(shoppingTotal)}</Text></View><ShoppingBag color={C.orange} size={27} /></View> : <Text style={s.fieldLabel}>YOUR ITEMS · {draft.items.filter((i) => i.checked).length}/{draft.items.length} done</Text>}
@@ -382,8 +382,8 @@ export default function App() {
               </View>
               <SketchPad paths={draft.sketchPaths} onChange={(sketchPaths) => patch({ sketchPaths })} color={draft.sketchColor || C.amber} width={draft.sketchWidth || 3} style={draft.sketchStyle || 'solid'} backgroundColor={draft.sketchBackground || C.panel} />
             </View> : null}
-            <Text style={s.fieldLabel}>{draft.type === 'lyrics' ? 'LYRICS' : draft.type === 'poem' ? 'YOUR POEM' : draft.type === 'brainstorm' ? 'YOUR IDEAS' : 'NOTE'}</Text>
-            <TextInput value={draft.body} onChangeText={(body) => patch({ body })} placeholder={draft.type === 'lyrics' ? 'Verse, chorus, a line you don’t want to lose…' : draft.type === 'poem' ? 'Begin anywhere. Let the words arrive…' : draft.type === 'brainstorm' ? 'Capture an idea, question or possibility…' : 'Write anything worth remembering…'} placeholderTextColor={C.muted} style={[s.bodyInput, (draft.type === 'poem' || draft.type === 'lyrics') && s.creativeBody]} multiline textAlignVertical="top" />
+            <Text style={[s.fieldLabel, { color: palette.muted }]}>{draft.type === 'lyrics' ? 'LYRICS' : draft.type === 'poem' ? 'YOUR POEM' : draft.type === 'brainstorm' ? 'YOUR IDEAS' : 'NOTE'}</Text>
+            <TextInput value={draft.body} onChangeText={(body) => patch({ body })} placeholder={draft.type === 'lyrics' ? 'Verse, chorus, a line you don’t want to lose…' : draft.type === 'poem' ? 'Begin anywhere. Let the words arrive…' : draft.type === 'brainstorm' ? 'Capture an idea, question or possibility…' : 'Write anything worth remembering…'} placeholderTextColor={palette.muted} style={[s.bodyInput, { color: palette.cream }, (draft.type === 'poem' || draft.type === 'lyrics') && s.creativeBody]} multiline textAlignVertical="top" />
             <View style={s.reminderCard}>
               <View style={s.reminderIcon}><AlarmClock color={C.amber} size={21} /></View><View style={{ flex: 1 }}><Text style={s.reminderTitle}>{draft.reminderAt ? 'Reminder set' : 'Remember this later'}</Text><Text style={s.reminderSub}>{draft.reminderAt ? new Date(draft.reminderAt).toLocaleString() : 'Choose a gentle nudge'}</Text></View>
               {draft.reminderAt ? <Pressable onPress={() => patch({ reminderAt: undefined, notificationId: undefined })}><X color={C.muted} size={20} /></Pressable> : null}
@@ -423,7 +423,7 @@ const s = StyleSheet.create({
   sectionTitle: { color: C.cream, fontSize: 17, fontWeight: '700', letterSpacing: -.2 },
   sectionSub: { color: C.muted, fontSize: 11 },
   quickRow: { paddingHorizontal: 19, paddingTop: 0, paddingBottom: 4, gap: 7 },
-  quickCard: { width: 68, height: 62, borderRadius: 13, borderWidth: 1, borderColor: C.line, borderBottomWidth: 3, backgroundColor: C.panel, alignItems: 'center', justifyContent: 'center', paddingVertical: 5, gap: 3 },
+  quickCard: { width: 68, height: 62, minHeight: 0, borderRadius: 13, borderWidth: 1, borderColor: C.line, borderBottomWidth: 3, backgroundColor: C.panel, alignItems: 'center', justifyContent: 'center', paddingVertical: 5, gap: 3 },
   quickGlyph: { width: 30, height: 29, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   quickLabel: { color: C.cream, fontSize: 10, fontWeight: '600' },
   feed: { flex: 1 },
