@@ -13,6 +13,10 @@ async function getDb() {
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS notes_updated_at_idx ON notes(updated_at DESC);
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
   `);
   return db;
 }
@@ -39,4 +43,20 @@ export async function saveNote(note: Note): Promise<void> {
 export async function deleteNote(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM notes WHERE id = ?', id);
+}
+
+export async function getSetting(key: string, fallback: string): Promise<string> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ value: string }>(
+    'SELECT value FROM settings WHERE key = ?', key,
+  );
+  return row?.value ?? fallback;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    key, value,
+  );
 }
