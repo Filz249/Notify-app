@@ -331,7 +331,7 @@ export default function App() {
             </Pressable>
             {updateMessage ? <Text style={[s.settingsHint, { color: palette.muted, marginTop: 9 }]}>{updateMessage}</Text> : null}
             <View style={[s.settingsDivider, { backgroundColor: palette.line }]} />
-            <Text style={[s.settingsFooter, { color: palette.muted }]}>Notify · version 0.1.0</Text>
+            <Text style={[s.settingsFooter, { color: palette.muted }]}>Notify · version 0.2.0</Text>
             <Text style={[s.settingsHint, { color: palette.muted }]}>Updates are installed with your approval; this app cannot silently replace its own APK.</Text>
           </ScrollView>
         </View>
