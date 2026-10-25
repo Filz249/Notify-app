@@ -2,6 +2,13 @@ export type NoteType =
   | 'note' | 'checklist' | 'todo' | 'shopping'
   | 'lyrics' | 'poem' | 'sketch' | 'brainstorm';
 
+export type SketchStroke = {
+  path: string;
+  color: string;
+  width: number;
+  style?: 'solid' | 'dashed' | 'dotted';
+};
+
 export type ListItem = {
   id: string;
   text: string;
@@ -23,5 +30,9 @@ export type Note = {
   reminderAt?: number;
   notificationId?: string;
   items: ListItem[];
-  sketchPaths: string[];
+  sketchPaths: Array<string | SketchStroke>;
+  sketchColor?: string;
+  sketchBackground?: string;
+  sketchWidth?: number;
+  sketchStyle?: 'solid' | 'dashed' | 'dotted';
 };
