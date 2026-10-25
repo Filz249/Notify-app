@@ -7,6 +7,8 @@ on:
     paths:
       - 'App.tsx'
       - 'src/**'
+      - 'assets/notify-icon.svg'
+      - 'assets/notify-icon-foreground.svg'
       - 'app.json'
       - 'package.json'
       - 'package-lock.json'
@@ -14,6 +16,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: notify-android-release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-android:
@@ -32,6 +38,12 @@ jobs:
           java-version: '17'
       - name: Install dependencies
         run: npm install
+      - name: Render redesigned launcher icons
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin
+          rsvg-convert -w 1024 -h 1024 assets/notify-icon.svg -o assets/icon-only.png
+          rsvg-convert -w 1024 -h 1024 assets/notify-icon-foreground.svg -o assets/icon-foreground.png
       - name: Generate native Android project
         run: npx expo prebuild --platform android --no-install
       - name: Build standalone arm64 release APK
