@@ -25,9 +25,11 @@ Notify is the Android/iOS mobile app project. It is built with **React Native + 
 - Local-first notes saved in on-device SQLite.
 - Notes, to-do lists, checklists, shopping lists, lyrics, poems, sketches and brainstorm notes.
 - Search and feed filters, important-note pinning, deletion and editing.
-- Shopping aisle suggestions and price subtotals.
-- Touch sketch canvas with persisted strokes.
+- Combined task/checklist notes and dedicated shopping lists with aisle suggestions and price subtotals.
+- Touch sketch canvas with configurable pen colors, solid/dashed/dotted strokes, multiple widths and canvas backgrounds.
+- Three saved appearance themes: Espresso, Midnight and Forest; responsive home layout for different screen sizes.
 - Local reminder notifications.
+- Settings menu with links to check releases and download the latest Android APK (installation is confirmed by Android).
 - Espresso backgrounds, cream typography, amber accents and colorful note-type icons.
 
 Location reminders, inactivity reminders, voice-to-structured-list, voice annotations, connected infinite mind maps, soundscapes, version rewind and inline math/code widgets remain future work.
