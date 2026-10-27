@@ -1,25 +1,34 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
-  PanResponder,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from "react-native";
-import Svg, { Line, Path, Rect } from "react-native-svg";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Line } from "react-native-svg";
 import {
+  ArrowLeft,
+  Check,
   Pencil,
   RotateCcw,
   RotateCw,
   Download,
   Eraser,
+  Palette,
+  Ellipsis,
+  Expand,
+  ClipboardPaste,
 } from "lucide-react-native";
 import { ColorPicker, ColorWheelIcon } from "./ColorPicker";
+import { SketchCanvas, SketchPreview } from "./SketchCanvas";
+import { BrushSlider } from "./BrushSlider";
+import { Action, Sheet, sheetStyles } from "./Sheet";
 import type { EditorPalette } from "./PaperEditor";
-import type { Note, SketchStroke } from "../types";
-import { layout } from "../layout";
-import { eraseAt, sketchSvg } from "../sketch";
+import type { Note } from "../types";
+import { sketchSvg } from "../sketch";
 import { exportSketchImage } from "../files";
 
 const COLORS = [
@@ -38,31 +47,47 @@ const PAPERS = [
   { label: "White", color: "#FFFFFF" },
   { label: "Sage", color: "#E7EBDD" },
 ];
-
 export function SketchEditor({
   note,
   onChange,
   palette,
+  onPasteIntoNote,
 }: {
   note: Note;
   onChange: (patch: Partial<Note>) => void;
   palette: EditorPalette;
+  onPasteIntoNote: () => void;
 }) {
-  const [picker, setPicker] = useState(false);
+  const [workspace, setWorkspace] = useState(!note.sketchPaths.length);
+  const [picker, setPicker] = useState(false),
+    [more, setMore] = useState(false);
+  const [tool, setTool] = useState<"pen" | "eraser">("pen");
+  const [brushWidth, setBrushWidth] = useState(
+    Math.max(1, Math.min(40, note.sketchWidth || 3)),
+  );
   const [undo, setUndo] = useState<Note["sketchPaths"][]>([]),
     [redo, setRedo] = useState<Note["sketchPaths"][]>([]);
-  const [tool, setTool] = useState<"pen" | "eraser">("pen"),
-    [exporting, setExporting] = useState(false),
+  const [exporting, setExporting] = useState(false),
     [message, setMessage] = useState("");
-  const svgRef = useRef<Svg>(null);
-  const canvasSize = useRef({ width: 360, height: 400 });
+  const latest = useRef(note);
+  latest.current = note;
+  const svgRef = useRef<Svg>(null),
+    canvasSize = useRef({ width: 360, height: 400 });
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const landscape = screenWidth > screenHeight + 120;
+  const color = note.sketchColor || COLORS[0],
+    background = note.sketchBackground || PAPERS[0].color;
   const commit = (
     sketchPaths: Note["sketchPaths"],
-    size?: { width: number; height: number },
+    size?: NonNullable<Note["sketchSize"]>,
   ) => {
-    setUndo((all) => [...all.slice(-99), note.sketchPaths]);
+    setUndo((all) => [...all.slice(-49), latest.current.sketchPaths]);
     setRedo([]);
     onChange({ sketchPaths, ...(size ? { sketchSize: size } : {}) });
+  };
+  const done = () => {
+    onChange({ sketchWidth: brushWidth });
+    setWorkspace(false);
   };
   const exportImage = async () => {
     setExporting(true);
@@ -87,603 +112,576 @@ export function SketchEditor({
       setExporting(false);
     }
   };
-  const color = note.sketchColor || COLORS[0];
-  const width = note.sketchWidth || 3;
-  const strokeStyle = note.sketchStyle || "solid";
-  const background = note.sketchBackground || PAPERS[0].color;
-  const custom = !COLORS.includes(color);
-  const canUndo = undo.length > 0;
+  const swatch = (value: string) => (
+    <Pressable
+      key={value}
+      accessibilityRole="button"
+      accessibilityLabel={`Pen color ${value}`}
+      accessibilityState={{ selected: color === value }}
+      onPress={() => onChange({ sketchColor: value })}
+      style={[
+        s.swatchHit,
+        { borderColor: color === value ? palette.cream : "transparent" },
+      ]}
+    >
+      <View style={[s.swatch, { backgroundColor: value }]} />
+    </Pressable>
+  );
+  const tools = [
+    {
+      label: "Pen",
+      name: "Draw with pen",
+      Icon: Pencil,
+      selected: tool === "pen",
+      action: () => setTool("pen"),
+      disabled: false,
+    },
+    {
+      label: "Eraser",
+      name: "Erase strokes",
+      Icon: Eraser,
+      selected: tool === "eraser",
+      action: () => setTool("eraser"),
+      disabled: false,
+    },
+    {
+      label: "Color",
+      name: "Open color wheel",
+      Icon: Palette,
+      action: () => setPicker(true),
+      disabled: false,
+    },
+    {
+      label: "Undo",
+      name: "Undo sketch stroke",
+      Icon: RotateCcw,
+      disabled: !undo.length,
+      action: () => {
+        setRedo((all) => [...all, note.sketchPaths]);
+        onChange({ sketchPaths: undo[undo.length - 1] });
+        setUndo((all) => all.slice(0, -1));
+      },
+    },
+    {
+      label: "Redo",
+      name: "Redo sketch stroke",
+      Icon: RotateCw,
+      disabled: !redo.length,
+      action: () => {
+        setUndo((all) => [...all, note.sketchPaths]);
+        onChange({ sketchPaths: redo[redo.length - 1] });
+        setRedo((all) => all.slice(0, -1));
+      },
+    },
+    {
+      label: "More",
+      name: "More sketch tools",
+      Icon: Ellipsis,
+      action: () => setMore(true),
+      disabled: false,
+    },
+  ];
   return (
-    <View testID="sketch-section" style={s.section}>
-      <View style={s.heading}>
-        <Text style={[s.title, { color: palette.cream }]}>Sketchpad</Text>
-        <View style={s.actions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Undo sketch stroke"
-            disabled={!canUndo}
-            onPress={() => {
-              setRedo((all) => [...all, note.sketchPaths]);
-              onChange({ sketchPaths: undo[undo.length - 1] });
-              setUndo((all) => all.slice(0, -1));
-            }}
-            style={[s.action, { opacity: canUndo ? 1 : 0.35 }]}
-          >
-            <RotateCcw size={16} color={palette.muted} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Redo sketch stroke"
-            disabled={!redo.length}
-            onPress={() => {
-              setUndo((all) => [...all, note.sketchPaths]);
-              onChange({ sketchPaths: redo[redo.length - 1] });
-              setRedo((all) => all.slice(0, -1));
-            }}
-            style={[s.action, { opacity: redo.length ? 1 : 0.35 }]}
-          >
-            <RotateCw size={16} color={palette.muted} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Export sketch PNG"
-            disabled={exporting}
-            onPress={() => void exportImage()}
-            style={s.action}
-          >
-            <Download size={16} color={palette.muted} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Clear canvas"
-            disabled={!note.sketchPaths.length}
-            onPress={() => commit([])}
-            style={[s.action, { opacity: note.sketchPaths.length ? 1 : 0.35 }]}
-          >
-            <Text style={[s.actionText, { color: palette.muted }]}>Clear</Text>
-          </Pressable>
-        </View>
-      </View>
-      {message ? (
-        <Text
-          accessibilityLiveRegion="polite"
-          style={[s.hintText, { color: palette.muted }]}
-        >
-          {message}
+    <View testID="sketch-section" style={{ gap: 12 }}>
+      <View style={s.previewHeading}>
+        <Text style={[s.sectionTitle, { color: palette.cream }]}>
+          Your sketch
         </Text>
-      ) : null}
-      <View
-        style={[
-          s.tools,
-          { backgroundColor: palette.panel, borderColor: palette.line },
-        ]}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open sketchpad"
+          onPress={() => setWorkspace(true)}
+          style={s.open}
+        >
+          <Pencil size={16} color={palette.accent} />
+          <Text
+            style={{ color: palette.accent, fontWeight: "600", fontSize: 13 }}
+          >
+            Draw
+          </Text>
+        </Pressable>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Edit drawing in full screen"
+        onPress={() => setWorkspace(true)}
+        style={[s.preview, { backgroundColor: background }]}
       >
-        <View style={[s.segments, { backgroundColor: palette.bg }]}>
-          {(["pen", "eraser"] as const).map((value) => (
-            <Pressable
-              key={value}
-              accessibilityRole="button"
-              accessibilityLabel={
-                value === "pen" ? "Draw with pen" : "Erase strokes"
-              }
-              accessibilityState={{ selected: tool === value }}
-              onPress={() => setTool(value)}
-              style={[
-                s.segment,
-                { flexDirection: "row", gap: 8 },
-                tool === value && { backgroundColor: palette.panel2 },
-              ]}
-            >
-              {value === "pen" ? (
-                <Pencil
-                  size={16}
-                  color={tool === value ? palette.accent : palette.muted}
-                />
-              ) : (
-                <Eraser
-                  size={16}
-                  color={tool === value ? palette.accent : palette.muted}
-                />
-              )}
-              <Text
-                style={[
-                  s.customText,
-                  { color: tool === value ? palette.accent : palette.muted },
-                ]}
-              >
-                {value === "pen" ? "Pen" : "Eraser"}
-              </Text>
-            </Pressable>
-          ))}
+        <SketchPreview
+          paths={note.sketchPaths}
+          size={note.sketchSize}
+          background={background}
+        />
+        <View style={[s.expand, { backgroundColor: palette.panel2 }]}>
+          <Expand size={18} color={palette.cream} />
         </View>
-        {tool === "eraser" ? (
-          <Text style={[s.hintText, { color: palette.muted }]}>
-            Touch a stroke to erase it. Undo brings it back.
+        {!note.sketchPaths.length ? (
+          <Text style={[s.emptyPreview, { color: palette.muted }]}>
+            Tap to start drawing
           </Text>
         ) : null}
-        <View style={s.colorHeading}>
-          <Text style={[s.label, { color: palette.muted }]}>Pen color</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open color wheel"
-            onPress={() => setPicker(true)}
-            style={[
-              s.custom,
-              {
-                borderColor: custom ? color : palette.line,
-                backgroundColor: palette.panel2,
-              },
-            ]}
-          >
-            <ColorWheelIcon size={17} />
-            <Text style={[s.customText, { color: palette.cream }]}>
-              {custom ? color : "Color wheel"}
-            </Text>
-          </Pressable>
-        </View>
-        <View style={s.swatches}>
-          {COLORS.map((swatch) => (
-            <Pressable
-              key={swatch}
-              accessibilityRole="button"
-              accessibilityLabel={`Pen color ${swatch}`}
-              accessibilityState={{ selected: color === swatch }}
-              onPress={() => onChange({ sketchColor: swatch })}
-              style={[
-                s.swatchHit,
-                {
-                  borderColor: color === swatch ? palette.cream : "transparent",
-                },
-              ]}
-            >
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Paste drawing into a note"
+        disabled={!note.sketchPaths.length}
+        onPress={onPasteIntoNote}
+        style={[
+          s.paste,
+          {
+            backgroundColor: palette.panel2,
+            opacity: note.sketchPaths.length ? 1 : 0.4,
+          },
+        ]}
+      >
+        <ClipboardPaste size={18} color={palette.accent} />
+        <Text style={{ color: palette.cream, fontWeight: "600", fontSize: 13 }}>
+          Paste into a note
+        </Text>
+      </Pressable>
+      <Modal visible={workspace} animationType="slide" onRequestClose={done}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }}>
+          <View style={s.workspace}>
+            <View style={s.header}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Back from sketchpad"
+                onPress={done}
+                style={[s.back, { backgroundColor: palette.panel }]}
+              >
+                <ArrowLeft size={22} color={palette.cream} />
+              </Pressable>
+              <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                <Text style={[s.title, { color: palette.cream }]}>
+                  Sketchpad
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={{ color: palette.muted, fontSize: 13 }}
+                >
+                  {note.title || "Untitled sketch"}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Done drawing"
+                onPress={done}
+                style={[s.done, { backgroundColor: palette.accent }]}
+              >
+                <Check size={17} color={palette.bg} />
+                <Text
+                  style={{ color: palette.bg, fontWeight: "700", fontSize: 15 }}
+                >
+                  Done
+                </Text>
+              </Pressable>
+            </View>
+            <View style={[s.body, landscape && { flexDirection: "row" }]}>
+              <SketchCanvas
+                note={note}
+                tool={tool}
+                brushWidth={brushWidth}
+                onChange={commit}
+                svgRef={svgRef}
+                onSize={(size) => {
+                  canvasSize.current = size;
+                }}
+              />
               <View
                 style={[
-                  s.swatch,
-                  { backgroundColor: swatch, borderColor: palette.line },
-                ]}
-              />
-            </Pressable>
-          ))}
-        </View>
-        <View style={[s.brushRows, { borderColor: palette.line }]}>
-          <View style={s.brushGroup}>
-            <Text style={[s.label, { color: palette.muted }]}>Stroke</Text>
-            <View style={[s.segments, { backgroundColor: palette.bg }]}>
-              {(["solid", "dashed", "dotted"] as const).map((style) => (
-                <Pressable
-                  key={style}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${style[0].toUpperCase() + style.slice(1)} stroke`}
-                  accessibilityState={{ selected: strokeStyle === style }}
-                  onPress={() => onChange({ sketchStyle: style })}
-                  style={[
-                    s.segment,
-                    strokeStyle === style && {
-                      backgroundColor: palette.panel2,
-                    },
-                  ]}
-                >
-                  <Svg width={27} height={18}>
-                    <Line
-                      x1={3}
-                      x2={24}
-                      y1={9}
-                      y2={9}
-                      stroke={
-                        strokeStyle === style ? palette.accent : palette.muted
-                      }
-                      strokeWidth={2}
-                      strokeLinecap="round"
-                      strokeDasharray={
-                        style === "dashed"
-                          ? "5 4"
-                          : style === "dotted"
-                            ? "1 5"
-                            : undefined
-                      }
-                    />
-                  </Svg>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-          <View style={s.brushGroup}>
-            <Text style={[s.label, { color: palette.muted }]}>Size</Text>
-            <View style={[s.segments, { backgroundColor: palette.bg }]}>
-              {[2, 4, 7].map((size, i) => {
-                const active = size === width || (width === 3 && size === 4);
-                return (
-                  <Pressable
-                    key={size}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${["Fine", "Medium", "Bold"][i]} pen`}
-                    accessibilityState={{ selected: active }}
-                    onPress={() => onChange({ sketchWidth: size })}
-                    style={[
-                      s.segment,
-                      active && { backgroundColor: palette.panel2 },
-                    ]}
-                  >
-                    <View
-                      style={{
-                        width: 21,
-                        height: size,
-                        borderRadius: 5,
-                        backgroundColor: active ? color : palette.muted,
-                      }}
-                    />
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        </View>
-        <View style={s.paperRow}>
-          <Text style={[s.label, { color: palette.muted }]}>Canvas</Text>
-          <View style={s.papers}>
-            {PAPERS.map((paper) => (
-              <Pressable
-                key={paper.color}
-                accessibilityRole="button"
-                accessibilityLabel={`${paper.label} canvas`}
-                accessibilityState={{ selected: background === paper.color }}
-                onPress={() => onChange({ sketchBackground: paper.color })}
-                style={[
-                  s.paperHit,
-                  {
-                    borderColor:
-                      background === paper.color
-                        ? palette.accent
-                        : "transparent",
-                  },
+                  s.controls,
+                  landscape && { width: 250, justifyContent: "center" },
                 ]}
               >
                 <View
-                  style={[
-                    s.paperSwatch,
-                    { backgroundColor: paper.color, borderColor: palette.line },
-                  ]}
-                />
-              </Pressable>
-            ))}
+                  testID="brush-controls"
+                  style={[s.brushPanel, { backgroundColor: palette.panel }]}
+                >
+                  <View style={s.colors}>
+                    {COLORS.slice(0, 6).map(swatch)}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Choose custom pen color"
+                      onPress={() => setPicker(true)}
+                      style={s.swatchHit}
+                    >
+                      <ColorWheelIcon size={28} />
+                    </Pressable>
+                  </View>
+                  <View style={s.sliderLabel}>
+                    <Text style={[s.label, { color: palette.cream }]}>
+                      Brush size
+                    </Text>
+                    <Text
+                      accessibilityLiveRegion="polite"
+                      style={{
+                        color: palette.cream,
+                        fontSize: 13,
+                        fontVariant: ["tabular-nums"],
+                      }}
+                    >
+                      {brushWidth} px
+                    </Text>
+                  </View>
+                  <View style={s.sliderRow}>
+                    <View style={{ flex: 1 }}>
+                      <BrushSlider
+                        value={brushWidth}
+                        onChange={setBrushWidth}
+                        onCommit={(sketchWidth) => onChange({ sketchWidth })}
+                        palette={palette}
+                      />
+                      <View style={s.endpoints}>
+                        <Text style={{ color: palette.muted, fontSize: 10 }}>
+                          1 px
+                        </Text>
+                        <Text style={{ color: palette.muted, fontSize: 10 }}>
+                          40 px
+                        </Text>
+                      </View>
+                    </View>
+                    <View
+                      accessibilityLabel={`Brush preview ${brushWidth} pixels`}
+                      style={s.brushPreview}
+                    >
+                      <View
+                        style={{
+                          width: brushWidth,
+                          height: brushWidth,
+                          borderRadius: 20,
+                          backgroundColor: color,
+                        }}
+                      />
+                    </View>
+                  </View>
+                </View>
+                <View
+                  testID="sketch-toolbar"
+                  style={[s.toolbar, { backgroundColor: palette.panel }]}
+                >
+                  {tools.map(
+                    ({ label, name, Icon, action, selected, disabled }) => (
+                      <Pressable
+                        key={label}
+                        accessibilityRole="button"
+                        accessibilityLabel={name}
+                        accessibilityState={{ selected: !!selected, disabled }}
+                        disabled={disabled}
+                        onPress={action}
+                        style={[
+                          s.tool,
+                          {
+                            backgroundColor: selected
+                              ? palette.panel2
+                              : "transparent",
+                            opacity: disabled ? 0.35 : 1,
+                          },
+                        ]}
+                      >
+                        <Icon
+                          size={22}
+                          strokeWidth={1.7}
+                          color={selected ? palette.accent : palette.cream}
+                        />
+                        <Text
+                          style={{
+                            color: selected ? palette.accent : palette.muted,
+                            fontSize: 10,
+                            fontWeight: "600",
+                          }}
+                        >
+                          {label}
+                        </Text>
+                      </Pressable>
+                    ),
+                  )}
+                </View>
+              </View>
+            </View>
           </View>
-        </View>
-      </View>
-      <Canvas
-        paths={note.sketchPaths}
-        onChange={commit}
-        color={color}
-        width={width}
-        strokeStyle={strokeStyle}
-        background={background}
-        border={palette.line}
-        tool={tool}
-        savedSize={note.sketchSize}
-        svgRef={svgRef}
-        onSize={(size) => {
-          canvasSize.current = size;
-        }}
-      />
-      {picker ? (
-        <ColorPicker
-          color={color}
-          palette={palette}
-          onClose={() => setPicker(false)}
-          onSelect={(sketchColor) => {
-            onChange({ sketchColor });
-            setPicker(false);
-          }}
-        />
-      ) : null}
-    </View>
-  );
-}
-
-function Canvas({
-  paths,
-  onChange,
-  color,
-  width,
-  strokeStyle,
-  background,
-  border,
-  tool,
-  savedSize,
-  svgRef,
-  onSize,
-}: {
-  paths: Note["sketchPaths"];
-  onChange: (
-    paths: Note["sketchPaths"],
-    size?: { width: number; height: number },
-  ) => void;
-  color: string;
-  width: number;
-  strokeStyle: "solid" | "dashed" | "dotted";
-  background: string;
-  border: string;
-  tool: "pen" | "eraser";
-  savedSize?: { width: number; height: number };
-  svgRef: React.RefObject<Svg | null>;
-  onSize: (size: { width: number; height: number }) => void;
-}) {
-  const { height } = useWindowDimensions();
-  const displayHeight = Math.max(300, Math.min(520, height * 0.43));
-  const [displayWidth, setDisplayWidth] = useState(360),
-    [current, setCurrent] = useState(""),
-    [erasing, setErasing] = useState<Note["sketchPaths"] | null>(null);
-  const pathRef = useRef(""),
-    eraseRef = useRef<Note["sketchPaths"] | null>(null);
-  const size = savedSize || { width: displayWidth, height: displayHeight };
-  const latest = useRef({
-    paths,
-    onChange,
-    color,
-    width,
-    strokeStyle,
-    tool,
-    size,
-    displayWidth,
-    displayHeight,
-  });
-  latest.current = {
-    paths,
-    onChange,
-    color,
-    width,
-    strokeStyle,
-    tool,
-    size,
-    displayWidth,
-    displayHeight,
-  };
-  const point = (e: {
-    nativeEvent: { locationX: number; locationY: number };
-  }) => {
-    const l = latest.current;
-    return {
-      x: (e.nativeEvent.locationX / l.displayWidth) * l.size.width,
-      y: (e.nativeEvent.locationY / l.displayHeight) * l.size.height,
-    };
-  };
-  const responder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: (e) => {
-          const { x, y } = point(e),
-            l = latest.current;
-          if (l.tool === "eraser") {
-            eraseRef.current = eraseAt(
-              l.paths,
-              x,
-              y,
-              (12 * l.size.width) / l.displayWidth,
-            );
-            setErasing(eraseRef.current);
-          } else {
-            pathRef.current = `M ${x} ${y} L ${x + 0.01} ${y}`;
-            setCurrent(pathRef.current);
-          }
-        },
-        onPanResponderMove: (e) => {
-          const { x, y } = point(e),
-            l = latest.current;
-          if (l.tool === "eraser") {
-            eraseRef.current = eraseAt(
-              eraseRef.current || l.paths,
-              x,
-              y,
-              (12 * l.size.width) / l.displayWidth,
-            );
-            setErasing(eraseRef.current);
-          } else {
-            pathRef.current += ` L ${x} ${y}`;
-            setCurrent(pathRef.current);
-          }
-        },
-        onPanResponderRelease: () => {
-          const l = latest.current;
-          if (l.tool === "eraser") {
-            if (eraseRef.current && eraseRef.current.length !== l.paths.length)
-              l.onChange(eraseRef.current, l.size);
-          } else if (pathRef.current)
-            l.onChange(
-              [
-                ...l.paths,
-                {
-                  path: pathRef.current,
-                  color: l.color,
-                  width: l.width,
-                  style: l.strokeStyle,
-                },
-              ],
-              l.size,
-            );
-          pathRef.current = "";
-          eraseRef.current = null;
-          setCurrent("");
-          setErasing(null);
-        },
-        onPanResponderTerminate: () => {
-          pathRef.current = "";
-          eraseRef.current = null;
-          setCurrent("");
-          setErasing(null);
-        },
-      }),
-    [],
-  );
-  const strokes: Array<string | SketchStroke> =
-    erasing ||
-    (current
-      ? [...paths, { path: current, color, width, style: strokeStyle }]
-      : paths);
-  const hint = ["#F5EBDD", "#FFFFFF", "#E7EBDD"].includes(background)
-    ? "#8D8273"
-    : "#9A8774";
-  return (
-    <View
-      accessibilityLabel="Drawing canvas"
-      onLayout={(e) => {
-        setDisplayWidth(e.nativeEvent.layout.width);
-        onSize({ width: e.nativeEvent.layout.width, height: displayHeight });
-      }}
-      style={[
-        s.canvas,
-        {
-          height: displayHeight,
-          backgroundColor: background,
-          borderColor: border,
-        },
-      ]}
-      {...responder.panHandlers}
-    >
-      <Svg
-        ref={svgRef}
-        pointerEvents="none"
-        width="100%"
-        height="100%"
-        viewBox={`0 0 ${size.width} ${size.height}`}
-        preserveAspectRatio="none"
-        style={StyleSheet.absoluteFill}
-      >
-        <Rect width={size.width} height={size.height} fill={background} />
-        {strokes.map((stroke, i) => {
-          const item =
-            typeof stroke === "string"
-              ? { path: stroke, color: COLORS[0], width: 3, style: "solid" }
-              : stroke;
-          return (
-            <Path
-              key={i}
-              d={item.path}
-              stroke={item.color}
-              strokeWidth={item.width}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray={
-                item.style === "dashed"
-                  ? "8 6"
-                  : item.style === "dotted"
-                    ? "1 6"
-                    : undefined
-              }
+          {picker ? (
+            <ColorPicker
+              color={color}
+              palette={palette}
+              onClose={() => setPicker(false)}
+              onSelect={(sketchColor) => {
+                onChange({ sketchColor });
+                setPicker(false);
+              }}
             />
-          );
-        })}
-      </Svg>
-      {!paths.length && !current ? (
-        <View pointerEvents="none" style={s.canvasHint}>
-          <Pencil size={23} color={hint} strokeWidth={1.5} />
-          <Text style={[s.hintTitle, { color: hint }]}>Make a little mark</Text>
-          <Text style={[s.hintText, { color: hint }]}>
-            Draw with your finger or cursor
-          </Text>
-        </View>
-      ) : null}
+          ) : null}
+          {more ? (
+            <Sheet
+              title="Sketch tools"
+              palette={palette}
+              onClose={() => setMore(false)}
+            >
+              <Text style={[sheetStyles.label, { color: palette.cream }]}>
+                Stroke style
+              </Text>
+              <View style={sheetStyles.row}>
+                {(["solid", "dashed", "dotted"] as const).map((style) => (
+                  <Pressable
+                    key={style}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${style[0].toUpperCase() + style.slice(1)} stroke`}
+                    accessibilityState={{
+                      selected: (note.sketchStyle || "solid") === style,
+                    }}
+                    onPress={() => onChange({ sketchStyle: style })}
+                    style={[
+                      s.styleButton,
+                      {
+                        backgroundColor:
+                          (note.sketchStyle || "solid") === style
+                            ? palette.panel2
+                            : palette.bg,
+                      },
+                    ]}
+                  >
+                    <Svg width={38} height={16}>
+                      <Line
+                        x1={3}
+                        x2={35}
+                        y1={8}
+                        y2={8}
+                        stroke={color}
+                        strokeWidth={3}
+                        strokeLinecap="round"
+                        strokeDasharray={
+                          style === "dashed"
+                            ? "6 5"
+                            : style === "dotted"
+                              ? "1 5"
+                              : undefined
+                        }
+                      />
+                    </Svg>
+                    <Text style={{ color: palette.cream, fontSize: 12 }}>
+                      {style[0].toUpperCase() + style.slice(1)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={[sheetStyles.label, { color: palette.cream }]}>
+                More colors
+              </Text>
+              <View style={sheetStyles.row}>{COLORS.map(swatch)}</View>
+              <Text style={[sheetStyles.label, { color: palette.cream }]}>
+                Canvas background
+              </Text>
+              <View style={sheetStyles.row}>
+                {PAPERS.map((p) => (
+                  <Pressable
+                    key={p.color}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${p.label} canvas`}
+                    accessibilityState={{ selected: background === p.color }}
+                    onPress={() => onChange({ sketchBackground: p.color })}
+                    style={[s.paper, { backgroundColor: palette.bg }]}
+                  >
+                    <View
+                      style={{
+                        width: 23,
+                        height: 23,
+                        borderRadius: 8,
+                        backgroundColor: p.color,
+                      }}
+                    />
+                    <Text
+                      style={{
+                        color:
+                          background === p.color
+                            ? palette.accent
+                            : palette.cream,
+                        fontSize: 12,
+                      }}
+                    >
+                      {p.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Action
+                label="Paste into a note"
+                disabled={!note.sketchPaths.length}
+                palette={palette}
+                onPress={() => {
+                  setMore(false);
+                  done();
+                  onPasteIntoNote();
+                }}
+              />
+              <Action
+                label={exporting ? "Preparing PNG…" : "Export sketch PNG"}
+                disabled={exporting}
+                secondary
+                palette={palette}
+                onPress={() => void exportImage()}
+              />
+              <Action
+                label="Clear canvas"
+                disabled={!note.sketchPaths.length}
+                secondary
+                palette={palette}
+                onPress={() => {
+                  commit([]);
+                  setMore(false);
+                }}
+              />
+              {message ? (
+                <Text
+                  accessibilityLiveRegion="polite"
+                  style={{ color: palette.muted, fontSize: 12 }}
+                >
+                  {message}
+                </Text>
+              ) : null}
+            </Sheet>
+          ) : null}
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }
-
 const s = StyleSheet.create({
-  section: { gap: layout.contentGap },
-  heading: {
-    minHeight: 36,
+  workspace: {
+    flex: 1,
+    width: "100%",
+    maxWidth: 1100,
+    alignSelf: "center",
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
+    gap: 14,
+  },
+  header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 12,
+    minHeight: 52,
   },
-  title: { fontSize: 16, lineHeight: 24, fontWeight: "700" },
-  actions: { flexDirection: "row", gap: 6 },
-  action: {
-    minWidth: 36,
-    minHeight: 36,
+  back: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
   },
-  actionText: { fontSize: 12, fontWeight: "600" },
-  tools: {
-    borderWidth: 0,
-    borderRadius: 18,
-    padding: layout.cardInset,
-    gap: 12,
-  },
-  colorHeading: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  label: { fontSize: 12, fontWeight: "600" },
-  custom: {
+  title: { fontSize: 22, fontWeight: "700" },
+  done: {
+    minHeight: 44,
+    paddingHorizontal: 16,
+    borderRadius: 16,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    minHeight: 32,
-    paddingHorizontal: 9,
-    borderWidth: 0,
-    borderRadius: 10,
   },
-  customText: { fontSize: 11, fontWeight: "600" },
-  swatches: {
+  body: { flex: 1, gap: 12 },
+  controls: { gap: 10 },
+  brushPanel: {
+    borderRadius: 21,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 12,
+    gap: 7,
+  },
+  colors: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
   swatchHit: {
-    width: 30,
-    height: 34,
-    borderRadius: 11,
-    borderWidth: 1.5,
+    width: 34,
+    height: 40,
+    borderWidth: 2,
+    borderColor: "transparent",
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
   },
-  swatch: { width: 23, height: 23, borderRadius: 9, borderWidth: 0 },
-  brushRows: {
+  swatch: { width: 26, height: 26, borderRadius: 13 },
+  sliderLabel: {
     flexDirection: "row",
-    gap: 12,
-    borderTopWidth: 0,
-    paddingTop: 12,
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 3,
   },
-  brushGroup: { flex: 1, gap: 8 },
-  segments: { flexDirection: "row", borderRadius: 10, padding: 3, gap: 2 },
-  segment: {
+  label: { fontSize: 14, fontWeight: "600" },
+  sliderRow: { flexDirection: "row", gap: 12, alignItems: "center" },
+  endpoints: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginHorizontal: 1,
+  },
+  brushPreview: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  toolbar: { flexDirection: "row", padding: 6, borderRadius: 21, gap: 2 },
+  tool: {
     flex: 1,
     minWidth: 0,
-    height: 32,
+    minHeight: 58,
+    borderRadius: 16,
+    gap: 6,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 8,
   },
-  paperRow: {
+  previewHeading: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  papers: { flexDirection: "row", gap: 5 },
-  paperHit: {
-    width: 32,
-    height: 32,
-    borderWidth: 1.5,
-    borderRadius: 10,
+  sectionTitle: { fontSize: 15, fontWeight: "600" },
+  open: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: 7,
+    paddingHorizontal: 8,
+    minHeight: 40,
   },
-  paperSwatch: { width: 23, height: 23, borderRadius: 7, borderWidth: 0 },
-  canvas: { borderRadius: 18, borderWidth: 0, overflow: "hidden" },
-  canvasHint: {
+  preview: { height: 290, borderRadius: 22, overflow: "hidden" },
+  expand: {
     position: "absolute",
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
+    top: 14,
+    right: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
   },
-  hintTitle: { fontSize: 15, fontWeight: "600" },
-  hintText: { fontSize: 12 },
+  emptyPreview: {
+    position: "absolute",
+    top: "48%",
+    alignSelf: "center",
+    fontSize: 14,
+  },
+  paste: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+    minHeight: 46,
+    borderRadius: 14,
+  },
+  styleButton: {
+    flex: 1,
+    minHeight: 58,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+  paper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+    minHeight: 40,
+    borderRadius: 12,
+  },
 });

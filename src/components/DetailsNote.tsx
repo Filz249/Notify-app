@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { ChevronDown, ChevronUp, FileText, Plus } from "lucide-react-native";
 import type { EditorPalette } from "./PaperEditor";
@@ -14,6 +14,10 @@ export function DetailsNote({
   palette: EditorPalette;
 }) {
   const [open, setOpen] = useState(Boolean(value));
+  const hasText = Boolean(value);
+  useEffect(() => {
+    if (hasText) setOpen(true);
+  }, [hasText]);
   return (
     <View
       testID="details-section"

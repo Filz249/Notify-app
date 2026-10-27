@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -14,6 +20,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
+import * as SplashScreen from "expo-splash-screen";
 import Svg, { Path } from "react-native-svg";
 import {
   AlarmClock,
@@ -21,6 +28,7 @@ import {
   Check,
   FileText,
   ListChecks,
+  Mic,
   Plus,
   Search,
   ShoppingBag,
@@ -48,7 +56,17 @@ import { QuoteEditor, QuotePreview } from "./src/components/QuoteEditor";
 import { PaperEditor } from "./src/components/PaperEditor";
 import { ReminderPicker } from "./src/components/ReminderPicker";
 import { SketchEditor } from "./src/components/SketchEditor";
+import { DrawingPicker } from "./src/components/DrawingPicker";
+import { createDrawingOverlay, supportsDrawings } from "./src/drawings";
 import { DetailsNote } from "./src/components/DetailsNote";
+import { LoadingScreen } from "./src/components/LoadingScreen";
+import {
+  VoiceInput,
+  VoiceInputStatus,
+  VoiceLanguage,
+} from "./src/components/VoiceInput";
+import { useDictation } from "./src/useDictation";
+import { appendDictation } from "./src/dictation";
 import { TitleField } from "./src/components/TitleField";
 import { layout, pageInset } from "./src/layout";
 import {
@@ -75,6 +93,14 @@ import {
 import { Sheet, Action } from "./src/components/Sheet";
 import type { ListItem, Note, NoteType } from "./src/types";
 
+if (Platform.OS !== "web") {
+  void SplashScreen.preventAutoHideAsync().catch(console.warn);
+}
+
+function revealStartup() {
+  void SplashScreen.hideAsync().catch(console.warn);
+}
+
 const C = {
   bg: "#20130D",
   panel: "#2B1B12",
@@ -83,25 +109,27 @@ const C = {
   cream: "#F5EBDD",
   muted: "#BBA995",
   amber: "#F2B23D",
-  orange: "#F08A3E",
-  green: "#A8C66C",
-  teal: "#63BBB8",
-  pink: "#D98EB5",
-  violet: "#B49ADF",
   red: "#E77C70",
   white: "#FFFFFF",
 };
 const TYPES: { id: NoteType; label: string; color: string; glyph: string }[] = [
-  { id: "note", label: "Note", color: C.amber, glyph: "✎" },
-  { id: "todo", label: "Tasks", color: C.green, glyph: "☑" },
-  { id: "shopping", label: "Shopping", color: C.orange, glyph: "▧" },
-  { id: "lyrics", label: "Lyrics", color: C.pink, glyph: "♫" },
-  { id: "poem", label: "Poem", color: C.violet, glyph: "❝" },
-  { id: "sketch", label: "Sketch", color: C.teal, glyph: "⌁" },
-  { id: "brainstorm", label: "Ideas", color: C.violet, glyph: "✳" },
-  { id: "quote", label: "Quotes", color: C.red, glyph: "❞" },
+  // A pastel color wheel: yellow through the cool hues, then back to peach.
+  { id: "note", label: "Note", color: "#F6D77E", glyph: "✎" },
+  { id: "todo", label: "Tasks", color: "#B9D89A", glyph: "☑" },
+  { id: "sketch", label: "Sketch", color: "#91D3C6", glyph: "⌁" },
+  { id: "brainstorm", label: "Ideas", color: "#9CC7EB", glyph: "✳" },
+  { id: "poem", label: "Poem", color: "#C5B3E6", glyph: "❝" },
+  { id: "lyrics", label: "Lyrics", color: "#E9B2CF", glyph: "♫" },
+  { id: "quote", label: "Quotes", color: "#F1ADA3", glyph: "❞" },
+  { id: "shopping", label: "Shopping", color: "#F1C09B", glyph: "▧" },
 ];
-type ThemeName = "espresso" | "midnight" | "forest";
+type ThemeName =
+  | "espresso"
+  | "midnight"
+  | "forest"
+  | "riviera"
+  | "daydream"
+  | "strawberryClub";
 const PALETTES: Record<
   ThemeName,
   {
@@ -113,6 +141,7 @@ const PALETTES: Record<
     cream: string;
     muted: string;
     accent: string;
+    light?: boolean;
   }
 > = {
   espresso: {
@@ -145,7 +174,41 @@ const PALETTES: Record<
     muted: "#ACBEA9",
     accent: "#B7D96C",
   },
+  riviera: {
+    name: "Riviera",
+    bg: "#F5F1E5",
+    panel: "#F7FAF2",
+    panel2: "#E1EAE0",
+    line: "#CBD8CE",
+    cream: "#174F50",
+    muted: "#5A716C",
+    accent: "#087E83",
+    light: true,
+  },
+  daydream: {
+    name: "Daydream",
+    bg: "#F3EFF8",
+    panel: "#FFFCF7",
+    panel2: "#E7DEF2",
+    line: "#D4C8E4",
+    cream: "#342B46",
+    muted: "#695B76",
+    accent: "#745091",
+    light: true,
+  },
+  strawberryClub: {
+    name: "Strawberry Club",
+    bg: "#FBE1ED",
+    panel: "#FFF8F1",
+    panel2: "#F3BFD6",
+    line: "#DC9EBB",
+    cream: "#352746",
+    muted: "#785169",
+    accent: "#C42669",
+    light: true,
+  },
 };
+const THEME_NAMES = Object.keys(PALETTES) as ThemeName[];
 const makeId = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const emptyNote = (type: NoteType = "note"): Note => ({
@@ -155,7 +218,7 @@ const emptyNote = (type: NoteType = "note"): Note => ({
   paperStyle: "plain",
   type,
   important: false,
-  color: TYPES.find((t) => t.id === type)?.color || C.amber,
+  color: TYPES.find((t) => t.id === type)?.color || TYPES[0].color,
   createdAt: Date.now(),
   updatedAt: Date.now(),
   items: [],
@@ -286,6 +349,9 @@ function NotifyApp() {
   const palette = PALETTES[themeName];
   const [notes, setNotes] = useState<Note[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [themeLoaded, setThemeLoaded] = useState(false);
+  const [startupVisible, setStartupVisible] = useState(true);
+  const finishStartup = useCallback(() => setStartupVisible(false), []);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<LibraryCategory>("all");
   const [editor, setEditor] = useState(false);
@@ -307,6 +373,8 @@ function NotifyApp() {
   const [viewPicker, setViewPicker] = useState(false);
   const [organizing, setOrganizing] = useState(false),
     [dataPanel, setDataPanel] = useState(false);
+  const [drawingPicker, setDrawingPicker] = useState(false);
+  const [draggingDrawing, setDraggingDrawing] = useState(false);
   const [message, setMessage] = useState(""),
     [recentTrash, setRecentTrash] = useState<Note | null>(null),
     [showAllDrafts, setShowAllDrafts] = useState(false);
@@ -346,10 +414,13 @@ function NotifyApp() {
       .finally(() => setLoaded(true));
     getSetting("theme", "espresso")
       .then((value) => {
-        if (value === "espresso" || value === "midnight" || value === "forest")
-          setThemeName(value);
+        const next = value === "goldenHour" ? "daydream" : value;
+        if (THEME_NAMES.includes(next as ThemeName))
+          setThemeName(next as ThemeName);
+        if (value === "goldenHour") return setSetting("theme", "daydream");
       })
-      .catch(console.warn);
+      .catch(console.warn)
+      .finally(() => setThemeLoaded(true));
     prepareNotifications().catch(console.warn);
     const clock = setInterval(() => setNow(Date.now()), 30000);
     return () => {
@@ -421,7 +492,27 @@ function NotifyApp() {
       });
     return write;
   };
-  const openNew = (type: NoteType = "note") => {
+  const canDictate = ["note", "brainstorm", "poem", "lyrics", "quote"].includes(
+    draft.type,
+  );
+  const dictation = useDictation({
+    noteId: draft.id,
+    enabled: editor && canDictate,
+    onText: (text, noteId) => {
+      if (canDictate && draftRef.current.id === noteId) {
+        void patch({ body: appendDictation(draftRef.current.body, text) });
+      }
+    },
+  });
+  const voiceInput = canDictate ? (
+    <VoiceInput dictation={dictation} palette={palette} disabled={saving} />
+  ) : null;
+  const voiceStatus = canDictate ? (
+    <VoiceInputStatus dictation={dictation} palette={palette} />
+  ) : null;
+  const openNew = async (type: NoteType = "note") => {
+    if (saving) return;
+    await dictation.stop();
     setHomeSection("create");
     const next = emptyNote(type);
     draftRef.current = next;
@@ -435,8 +526,14 @@ function NotifyApp() {
     setNewPrice("");
     setEditor(true);
   };
-  const openEdit = (note: Note) => {
-    const recovered = drafts.find((n) => n.id === note.id),
+  const openEdit = async (note: Note, preferGiven = false) => {
+    if (saving) return;
+    await dictation.stop();
+    const recovered = preferGiven
+        ? undefined
+        : editor && note.id === draftRef.current.id
+          ? draftRef.current
+          : drafts.find((n) => n.id === note.id),
       next = recovered || note;
     draftRef.current = {
       ...next,
@@ -454,13 +551,52 @@ function NotifyApp() {
     setEditor(true);
   };
   const closeEditor = async () => {
+    if (saving) return;
+    setSaving(true);
     try {
+      await dictation.stop();
       await flushDrafts();
       setEditor(false);
     } catch {
       setSaveError("Your draft could not be saved. Try Save before leaving.");
+    } finally {
+      setSaving(false);
     }
   };
+  const pasteDrawing = async (chosen: Note | null) => {
+    await dictation.stop();
+    await flushDrafts();
+    const source = draftRef.current;
+    const target = chosen
+      ? drafts.find((n) => n.id === chosen.id) || chosen
+      : emptyNote("note");
+    if (!supportsDrawings(target))
+      throw new Error("Choose a writing note for this drawing.");
+    if ((target.drawingOverlays?.length || 0) >= 20)
+      throw new Error(
+        "This note already has 20 drawings. Remove one before adding another.",
+      );
+    const overlay = createDrawingOverlay(
+      source,
+      makeId(),
+      target.drawingOverlays?.length || 0,
+    );
+    const next = {
+      ...target,
+      drawingOverlays: [...(target.drawingOverlays || []), overlay],
+      updatedAt: Date.now(),
+    };
+    await saveDraft(next);
+    setDrafts((all) => [next, ...all.filter((n) => n.id !== next.id)]);
+    await openEdit(next, true);
+    setDraftStatus("Drawing pasted · long-press to move");
+    setHomeSection("library");
+    setView("notes");
+    setFilter("all");
+    setQuery("");
+    setDrawingPicker(false);
+  };
+
   const rememberInState = (note: Note) => {
     setNow(Date.now());
     setNotes((all) =>
@@ -487,31 +623,32 @@ function NotifyApp() {
   const save = async () => {
     if (saving) return;
     setSaveError("");
-    const source = draftRef.current,
-      version = draftVersion.current;
-    if (source.type === "quote" && !source.body.trim()) {
-      setSaveError("Add a quote before saving.");
-      return;
-    }
-    if (!hasContent(source)) {
-      setSaveError("Add a title, some text, a list item or a sketch first.");
-      return;
-    }
-    if (
-      source.reminderAt &&
-      source.reminderAt <= Date.now() &&
-      (!source.reminderRepeat || source.reminderRepeat === "none") &&
-      !notes.some(
-        (n) => n.id === source.id && n.reminderAt === source.reminderAt,
-      )
-    ) {
-      setSaveError(
-        "Your reminder time has passed. Choose a later time before saving.",
-      );
-      return;
-    }
     setSaving(true);
     try {
+      await dictation.stop();
+      const source = draftRef.current,
+        version = draftVersion.current;
+      if (source.type === "quote" && !source.body.trim()) {
+        setSaveError("Add a quote before saving.");
+        return;
+      }
+      if (!hasContent(source)) {
+        setSaveError("Add a title, some text, a list item or a sketch first.");
+        return;
+      }
+      if (
+        source.reminderAt &&
+        source.reminderAt <= Date.now() &&
+        (!source.reminderRepeat || source.reminderRepeat === "none") &&
+        !notes.some(
+          (n) => n.id === source.id && n.reminderAt === source.reminderAt,
+        )
+      ) {
+        setSaveError(
+          "Your reminder time has passed. Choose a later time before saving.",
+        );
+        return;
+      }
       await flushDrafts();
       const base = {
         ...source,
@@ -556,6 +693,8 @@ function NotifyApp() {
     setSaving(true);
     setSaveError("");
     try {
+      await dictation.stop();
+      if (editor && note.id === draftRef.current.id) note = draftRef.current;
       await flushDrafts();
       await cancelReminder(
         notes.find((n) => n.id === note.id)?.notificationId ||
@@ -766,12 +905,7 @@ function NotifyApp() {
             pressed && s.pressed,
           ]}
         >
-          <View
-            style={[
-              s.noteStripe,
-              { backgroundColor: note.color || info.color },
-            ]}
-          />
+          <View style={[s.noteStripe, { backgroundColor: info.color }]} />
           <View style={s.noteContent}>
             <View style={[s.noteTop, { paddingRight: 38 }]}>
               <View
@@ -779,7 +913,7 @@ function NotifyApp() {
                   s.noteGlyph,
                   {
                     backgroundColor: palette.panel2,
-                    borderColor: (note.color || info.color) + "66",
+                    borderColor: info.color + "66",
                   },
                 ]}
               >
@@ -859,6 +993,14 @@ function NotifyApp() {
                     : "Tap to add your thoughts…")}
               </Text>
             )}
+            {note.drawingOverlays?.length ? (
+              <Text style={[s.noteOrganization, { color: palette.muted }]}>
+                {note.drawingOverlays.length}{" "}
+                {note.drawingOverlays.length === 1
+                  ? "drawing overlay"
+                  : "drawing overlays"}
+              </Text>
+            ) : null}
           </View>
         </Pressable>
         <Pressable
@@ -962,9 +1104,21 @@ function NotifyApp() {
     </Modal>
   ) : null;
 
+  if (startupVisible) {
+    return (
+      <LoadingScreen
+        ready={loaded && themeLoaded}
+        palette={palette}
+        statusBarStyle={palette.light ? "dark" : "light"}
+        onFinish={finishStartup}
+        onLayout={revealStartup}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: palette.bg }]}>
-      <StatusBar style="light" />
+      <StatusBar style={palette.light ? "dark" : "light"} />
       <ScrollView
         key={homeSection}
         style={s.homeScroll}
@@ -1491,70 +1645,78 @@ function NotifyApp() {
                 Choose a color theme. Your choice is saved on this device.
               </Text>
               <View style={s.themeChoices}>
-                {(["espresso", "midnight", "forest"] as ThemeName[]).map(
-                  (key) => {
-                    const p = PALETTES[key];
-                    const active = themeName === key;
-                    return (
-                      <Pressable
-                        key={key}
-                        accessibilityRole="button"
-                        accessibilityLabel={`${p.name} theme`}
-                        accessibilityState={{ selected: active }}
-                        onPress={() => chooseTheme(key)}
+                {THEME_NAMES.map((key) => {
+                  const p = PALETTES[key];
+                  const active = themeName === key;
+                  return (
+                    <Pressable
+                      key={key}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${p.name} theme`}
+                      accessibilityState={{ selected: active }}
+                      onPress={() => chooseTheme(key)}
+                      style={[
+                        s.themeChoice,
+                        {
+                          backgroundColor: p.bg,
+                          borderColor: active ? p.accent : p.line,
+                        },
+                      ]}
+                    >
+                      <View
                         style={[
-                          s.themeChoice,
-                          {
-                            backgroundColor: p.bg,
-                            borderColor: active ? p.accent : p.line,
-                          },
+                          s.themePreview,
+                          { backgroundColor: p.panel, borderColor: p.line },
                         ]}
                       >
                         <View
                           style={[
-                            s.themePreview,
-                            { backgroundColor: p.panel, borderColor: p.line },
+                            s.themePreviewLine,
+                            { backgroundColor: p.accent },
                           ]}
-                        >
-                          <View
-                            style={[
-                              s.themePreviewLine,
-                              { backgroundColor: p.accent },
-                            ]}
+                        />
+                        <View
+                          style={[
+                            s.themePreviewLine,
+                            { backgroundColor: p.muted, width: "65%" },
+                          ]}
+                        />
+                        <View
+                          style={[
+                            s.themePreviewChip,
+                            { backgroundColor: p.panel2 },
+                          ]}
+                        />
+                        {active ? (
+                          <CheckCircle2
+                            style={s.themeCheck}
+                            size={15}
+                            color={p.accent}
+                            fill={p.bg}
                           />
-                          <View
-                            style={[
-                              s.themePreviewLine,
-                              { backgroundColor: p.muted, width: "65%" },
-                            ]}
-                          />
-                          <View
-                            style={[
-                              s.themePreviewChip,
-                              { backgroundColor: p.panel2 },
-                            ]}
-                          />
-                          {active ? (
-                            <CheckCircle2
-                              style={s.themeCheck}
-                              size={15}
-                              color={p.accent}
-                              fill={p.bg}
-                            />
-                          ) : null}
-                        </View>
-                        <View style={s.themeChoiceFooter}>
-                          <Text
-                            style={[s.themeChoiceLabel, { color: p.cream }]}
-                          >
-                            {p.name}
-                          </Text>
-                        </View>
-                      </Pressable>
-                    );
-                  },
-                )}
+                        ) : null}
+                      </View>
+                      <View style={s.themeChoiceFooter}>
+                        <Text style={[s.themeChoiceLabel, { color: p.cream }]}>
+                          {p.name}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
               </View>
+              <View
+                style={[s.settingsDivider, { backgroundColor: palette.line }]}
+              />
+              <View style={s.settingsSectionHead}>
+                <Mic color={palette.accent} size={18} />
+                <Text
+                  style={[s.settingsSectionTitle, { color: palette.cream }]}
+                >
+                  Dictation language
+                </Text>
+              </View>
+              <VoiceLanguage dictation={dictation} palette={palette} />
               <View
                 style={[s.settingsDivider, { backgroundColor: palette.line }]}
               />
@@ -1735,6 +1897,7 @@ function NotifyApp() {
             </View>
             <ScrollView
               testID="editor-scroll"
+              scrollEnabled={!draggingDrawing}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={[
                 s.editorScroll,
@@ -1829,9 +1992,12 @@ function NotifyApp() {
                   <View style={s.listHeading}>
                     <View style={s.listHeadingTitle}>
                       {draft.type === "shopping" ? (
-                        <ShoppingBag size={18} color={C.orange} />
+                        <ShoppingBag
+                          size={18}
+                          color={typeInfo("shopping").color}
+                        />
                       ) : (
-                        <ListChecks size={19} color={C.green} />
+                        <ListChecks size={19} color={typeInfo("todo").color} />
                       )}
                       <Text style={[s.listTitle, { color: palette.cream }]}>
                         {draft.type === "shopping"
@@ -1872,8 +2038,7 @@ function NotifyApp() {
                         style={{
                           height: 3,
                           borderRadius: 3,
-                          backgroundColor:
-                            draft.type === "shopping" ? C.orange : C.green,
+                          backgroundColor: typeInfo(draft.type).color,
                           width: `${(draft.items.filter((i) => i.checked).length / draft.items.length) * 100}%`,
                         }}
                       />
@@ -2103,6 +2268,7 @@ function NotifyApp() {
                   note={draft}
                   onChange={patch}
                   palette={palette}
+                  onPasteIntoNote={() => setDrawingPicker(true)}
                 />
               ) : null}
               {draft.type === "quote" ? (
@@ -2114,6 +2280,8 @@ function NotifyApp() {
                   onAuthorChange={(quoteAuthor) => patch({ quoteAuthor })}
                   palette={palette}
                   accent={typeInfo("quote").color}
+                  voiceInput={voiceInput}
+                  voiceStatus={voiceStatus}
                 />
               ) : ["checklist", "todo", "shopping", "sketch"].includes(
                   draft.type,
@@ -2174,11 +2342,18 @@ function NotifyApp() {
                   ) : null}
                   <PaperEditor
                     key={draft.id}
+                    voiceInput={voiceInput}
+                    voiceStatus={voiceStatus}
                     value={draft.body}
                     onChange={(body) => patch({ body })}
                     paperStyle={draft.paperStyle}
                     onStyleChange={(paperStyle) => patch({ paperStyle })}
                     palette={palette}
+                    overlays={draft.drawingOverlays}
+                    onOverlaysChange={(drawingOverlays) =>
+                      patch({ drawingOverlays })
+                    }
+                    onDrawingDragChange={setDraggingDrawing}
                     minHeight={Math.max(
                       340,
                       Math.min(
@@ -2249,6 +2424,16 @@ function NotifyApp() {
             </ScrollView>
           </KeyboardAvoidingView>
           {editor ? reminderAlert : null}
+          {drawingPicker ? (
+            <DrawingPicker
+              notes={activeNotes.map(
+                (n) => drafts.find((d) => d.id === n.id) || n,
+              )}
+              palette={palette}
+              onClose={() => setDrawingPicker(false)}
+              onPick={pasteDrawing}
+            />
+          ) : null}
           {organizing ? (
             <OrganizeSheet
               note={draft}
@@ -2806,7 +2991,7 @@ const s = StyleSheet.create({
   totalAmount: { fontSize: 22, fontWeight: "700" },
   fieldLabel: { fontSize: 16, lineHeight: 24, fontWeight: "700" },
   aisleTitle: {
-    color: C.orange,
+    color: typeInfo("shopping").color,
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 1,
@@ -2843,7 +3028,10 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  checkBoxOn: { backgroundColor: C.green, borderColor: C.green },
+  checkBoxOn: {
+    backgroundColor: typeInfo("todo").color,
+    borderColor: typeInfo("todo").color,
+  },
   itemText: {
     color: C.cream,
     fontSize: 14,
@@ -2979,9 +3167,10 @@ const s = StyleSheet.create({
   },
   settingsSectionTitle: { fontSize: 14, fontWeight: "800" },
   settingsHint: { fontSize: 13, lineHeight: 20, marginBottom: 12 },
-  themeChoices: { flexDirection: "row", gap: 9 },
+  themeChoices: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
   themeChoice: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: "30%",
     minWidth: 0,
     padding: 8,
     borderRadius: 13,
@@ -3004,7 +3193,7 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
     marginTop: 7,
   },
-  themeChoiceLabel: { fontSize: 12, fontWeight: "700" },
+  themeChoiceLabel: { flexShrink: 1, fontSize: 12, fontWeight: "700" },
   settingsDivider: { height: 1, marginTop: 14, marginBottom: 3 },
   settingsAction: {
     minHeight: 57,

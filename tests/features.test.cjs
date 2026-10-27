@@ -11,9 +11,11 @@ function load(file, globals = {}, imports = {}) {
     ts.transpileModule(
       fs.readFileSync(path.join(__dirname, "../src", file), "utf8"),
       {
+        fileName: file,
         compilerOptions: {
           module: ts.ModuleKind.CommonJS,
           target: ts.ScriptTarget.ES2022,
+          jsx: ts.JsxEmit.React,
         },
       },
     ).outputText,
@@ -553,4 +555,325 @@ test("entering an author before the quotation still creates a recoverable draft"
     note({ type: "quote", title: "", body: "", quoteAuthor: "Sample author" }),
   );
   assert.equal((await drafts.loadDrafts())[0].quoteAuthor, "Sample author");
+});
+
+const drawings = load("drawings.ts");
+test("pasted drawings are independent transparent overlays and survive backup/restore", () => {
+  const source = note({
+    type: "sketch",
+    title: "Flowers",
+    sketchBackground: "#FFFFFF",
+    sketchSize: { width: 300, height: 420 },
+    sketchPaths: [
+      { path: "M 1 2 L 30 40", color: "#63BBB8", width: 27, style: "dotted" },
+    ],
+  });
+  const overlay = drawings.createDrawingOverlay(source, "overlay-1");
+  const pasted = note({
+    title: "Journal",
+    body: "Text stays in place.",
+    drawingOverlays: [overlay],
+  });
+  const restored = backup.parseBackup(backup.makeBackup([pasted], [])).notes[0];
+  assert.equal(restored.body, pasted.body);
+  assert.deepEqual(plain(restored.drawingOverlays), plain([overlay]));
+  assert.equal("background" in overlay, false);
+  assert.equal("notificationId" in overlay, false);
+  source.sketchPaths[0].color = "#000000";
+  source.sketchPaths.length = 0;
+  assert.equal(overlay.paths[0].color, "#63BBB8");
+  assert.equal(overlay.paths.length, 1);
+  assert.equal(drawings.supportsDrawings(pasted), true);
+  assert.equal(drawings.supportsDrawings(note({ type: "shopping" })), false);
+});
+test("overlay placement and resizing keep drawings within the paper width", () => {
+  const overlay = drawings.createDrawingOverlay(
+    note({ sketchPaths: ["M 0 0 L 10 10"] }),
+    "o",
+  );
+  const moved = drawings.placeDrawing(overlay, { x: 3, y: -100, width: 0.8 });
+  assert.equal(moved.x + moved.width, 1);
+  assert.equal(moved.y, 0);
+  assert.equal(drawings.placeDrawing(overlay, { width: -1 }).width, 0.15);
+  assert.equal(drawings.placeDrawing(overlay, { width: 10 }).width, 0.95);
+  assert.equal(drawings.drawingHeight(overlay, 400), (0.55 * 400 * 400) / 360);
+  assert.throws(
+    () => drawings.createDrawingOverlay(note(), "empty"),
+    /Draw something/,
+  );
+});
+test("invalid or unsafe drawing overlays are rejected before backup import", () => {
+  const overlay = drawings.createDrawingOverlay(
+    note({ sketchPaths: ["M 0 0 L 10 10"] }),
+    "o",
+  );
+  for (const change of [
+    { x: -1 },
+    { width: Infinity },
+    { y: -1 },
+    { size: { width: 0, height: 10 } },
+    { paths: ["M 0 0 <script>"] },
+    { paths: [] },
+  ]) {
+    assert.throws(
+      () =>
+        backup.makeBackup(
+          [note({ drawingOverlays: [{ ...overlay, ...change }] })],
+          [],
+        ),
+      /drawing overlay/,
+    );
+  }
+  assert.throws(
+    () =>
+      backup.makeBackup([note({ drawingOverlays: [overlay, overlay] })], []),
+    /drawing overlay/,
+  );
+});
+test("overlay-only notes are recoverable drafts and imports distinguish moved drawings", async () => {
+  const data = new Map();
+  const drafts = load("drafts.web.ts", {
+    localStorage: {
+      getItem: (k) => data.get(k),
+      setItem: (k, v) => data.set(k, v),
+    },
+  });
+  const overlay = drawings.createDrawingOverlay(
+    note({ sketchPaths: ["M 0 0 L 30 40"] }),
+    "o",
+  );
+  const pasted = note({ title: "", body: "", drawingOverlays: [overlay] });
+  await drafts.saveDraft(pasted);
+  assert.equal((await drafts.loadDrafts())[0].drawingOverlays[0].id, "o");
+  const imported = backup.parseBackup(
+    backup.makeBackup(
+      [{ ...pasted, drawingOverlays: [{ ...overlay, y: 100 }] }],
+      [],
+    ),
+  );
+  assert.equal(
+    backup.planImport(imported, [pasted], [], () => "moved-copy").notes.length,
+    1,
+  );
+});
+test("drawing touch coordinates preserve aspect ratio across phone sizes and rotation", () => {
+  const size = { width: 200, height: 400 },
+    display = { width: 400, height: 400 };
+  const center = drawings.sketchPoint(200, 200, display, size);
+  assert.equal(center.x, 100);
+  assert.equal(center.y, 200);
+  assert.equal(center.inside, true);
+  const margin = drawings.sketchPoint(30, 200, display, size);
+  assert.equal(margin.inside, false);
+  assert.equal(margin.x, 0);
+  const rotated = drawings.sketchPoint(
+    400,
+    150,
+    { width: 800, height: 300 },
+    size,
+  );
+  assert.equal(rotated.x, 100);
+  assert.equal(rotated.y, 200);
+});
+test("eraser gestures retain unchanged geometry and remove intersected strokes cumulatively", () => {
+  const first = { path: "M 0 0 L 100 0", color: "#F2B23D", width: 3 };
+  const second = { path: "M 0 100 L 100 100", color: "#63BBB8", width: 40 };
+  const paths = [first, second],
+    erase = sketch.createStrokeEraser(paths);
+  assert.equal(erase(500, 500, 10), paths);
+  const afterFirst = erase(50, 0, 8);
+  assert.equal(afterFirst.length, 1);
+  assert.equal(afterFirst[0], second);
+  assert.equal(erase(500, 500, 8), afterFirst);
+  assert.equal(erase(50, 115, 8).length, 0);
+});
+
+test("native drawing batches touch updates, saves on release, and retains interrupted strokes", () => {
+  let handlers;
+  const frames = new Map(),
+    saved = [];
+  let frameId = 0;
+  const react = {
+    createElement: (type, props, ...children) => ({
+      type,
+      props: { ...props, children },
+    }),
+    memo: (component) => component,
+    useRef: (value) => ({ current: value }),
+    useMemo: (fn) => fn(),
+    useEffect: () => {},
+    useState: (value) => [
+      typeof value === "function" ? value() : value,
+      () => {},
+    ],
+  };
+  const canvas = load(
+    "components/SketchCanvas.tsx",
+    {
+      requestAnimationFrame: (fn) => {
+        frames.set(++frameId, fn);
+        return frameId;
+      },
+      cancelAnimationFrame: (id) => frames.delete(id),
+    },
+    {
+      react: { default: react, ...react },
+      "react-native": {
+        PanResponder: {
+          create: (config) => {
+            handlers = config;
+            return { panHandlers: config };
+          },
+        },
+        Platform: { OS: "android" },
+        StyleSheet: {
+          create: (value) => value,
+          absoluteFill: {},
+          absoluteFillObject: {},
+        },
+        Text: "Text",
+        View: "View",
+      },
+      "react-native-svg": {
+        default: "Svg",
+        G: "G",
+        Path: "Path",
+        Rect: "Rect",
+      },
+      "lucide-react-native": { Pencil: "Pencil" },
+      "../sketch": sketch,
+      "../drawings": drawings,
+    },
+  );
+  canvas.SketchCanvas({
+    note: note({ sketchColor: "#63BBB8" }),
+    tool: "pen",
+    brushWidth: 26,
+    onChange: (paths, size) => saved.push({ paths, size }),
+    svgRef: { current: null },
+    onSize: () => {},
+  });
+  const event = (x, y) => ({ nativeEvent: { locationX: x, locationY: y } });
+  assert.equal(
+    handlers.onStartShouldSetPanResponder(event(10, 20), {
+      numberActiveTouches: 1,
+    }),
+    true,
+  );
+  assert.equal(
+    handlers.onStartShouldSetPanResponder(event(10, 20), {
+      numberActiveTouches: 2,
+    }),
+    false,
+  );
+  handlers.onPanResponderGrant(event(10, 20));
+  handlers.onPanResponderMove(event(30, 40), { numberActiveTouches: 1 });
+  handlers.onPanResponderMove(event(50, 70), { numberActiveTouches: 1 });
+  assert.equal(frames.size, 1);
+  assert.equal(saved.length, 0);
+  // Releasing before the pending display frame must still save the complete stroke.
+  handlers.onPanResponderRelease();
+  assert.equal(frames.size, 0);
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].paths[0].width, 26);
+  assert.equal(saved[0].paths[0].color, "#63BBB8");
+  assert.match(saved[0].paths[0].path, /L 50 70$/);
+  handlers.onPanResponderGrant(event(80, 100));
+  handlers.onPanResponderMove(event(90, 120), { numberActiveTouches: 1 });
+  handlers.onPanResponderTerminate();
+  assert.equal(saved.length, 2);
+  assert.match(saved[1].paths[0].path, /L 90 120$/);
+  assert.equal(frames.size, 0);
+});
+
+test("drawing overlays let normal swipes scroll and long-press unlocks movement", () => {
+  let handlers, translation;
+  const locks = [],
+    changes = [];
+  const react = {
+    createElement: (type, props, ...children) => ({
+      type,
+      props: {
+        ...props,
+        children: children.length === 1 ? children[0] : children,
+      },
+    }),
+    useRef: (value) => ({ current: value }),
+    useMemo: (fn) => fn(),
+    useEffect: () => {},
+  };
+  class ValueXY {
+    setValue(value) {
+      translation = value;
+    }
+    getTranslateTransform() {
+      return [];
+    }
+  }
+  const native = {
+    PanResponder: {
+      create: (config) => {
+        handlers = config;
+        return { panHandlers: config };
+      },
+    },
+    Animated: { ValueXY, View: "Animated.View" },
+    Platform: { OS: "android" },
+    Pressable: "Pressable",
+    StyleSheet: { create: (value) => value },
+  };
+  const overlays = load(
+    "components/DrawingOverlays.tsx",
+    {},
+    {
+      react: { default: react, ...react },
+      "react-native": native,
+      "../drawings": drawings,
+      "./SketchCanvas": { SketchPreview: "SketchPreview" },
+    },
+  );
+  const overlay = drawings.createDrawingOverlay(
+    note({ sketchPaths: ["M 0 0 L 30 40"] }),
+    "movable",
+  );
+  const tree = overlays.DrawingOverlays({
+    overlays: [overlay],
+    width: 300,
+    height: 400,
+    selected: null,
+    onSelect: () => {},
+    onChange: (id, change) => changes.push({ id, ...change }),
+    onDraggingChange: (value) => locks.push(value),
+    accent: "#F2B23D",
+  });
+  const child = tree.props.children[0];
+  const placed = child.type(child.props);
+  const press = placed.props.children.props;
+  assert.equal(handlers.onStartShouldSetPanResponderCapture(), false);
+  assert.equal(handlers.onMoveShouldSetPanResponderCapture(), false);
+  assert.equal(changes.length, 0);
+  assert.deepEqual(locks, []);
+  press.onLongPress();
+  assert.deepEqual(locks, [true]);
+  assert.equal(handlers.onMoveShouldSetPanResponderCapture(), true);
+  // Pressable releases to the drag responder. Do not unlock the page mid-drag.
+  press.onPressOut();
+  assert.deepEqual(locks, [true]);
+  handlers.onPanResponderGrant();
+  handlers.onPanResponderMove(null, { dx: 1000, dy: 1000 });
+  assert.deepEqual(locks, [true, true]);
+  assert.equal(changes.length, 0);
+  assert.ok(translation.x < 1000);
+  handlers.onPanResponderTerminate();
+  assert.deepEqual(locks, [true, true, false]);
+  assert.equal(changes.length, 1);
+  assert.equal(changes[0].id, "movable");
+  assert.equal(changes[0].x + overlay.width, 1);
+  assert.ok(changes[0].y + drawings.drawingHeight(overlay, 300) <= 400.000001);
+  // A hold followed by lifting the finger must also restore scrolling, without moving the drawing.
+  const previousChanges = changes.length;
+  press.onLongPress();
+  press.onPressOut();
+  assert.equal(locks.at(-1), false);
+  assert.equal(changes.length, previousChanges);
 });

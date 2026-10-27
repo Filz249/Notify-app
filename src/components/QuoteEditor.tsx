@@ -17,6 +17,8 @@ export function QuoteEditor({
   onAuthorChange,
   palette,
   accent,
+  voiceInput,
+  voiceStatus,
 }: {
   value: string;
   author: string;
@@ -24,17 +26,23 @@ export function QuoteEditor({
   onAuthorChange: (text: string) => void;
   palette: EditorPalette;
   accent: string;
+  voiceInput?: React.ReactNode;
+  voiceStatus?: React.ReactNode;
 }) {
   return (
     <View testID="quote-section" style={s.section}>
       <View style={[s.paper, { backgroundColor: palette.panel }]}>
-        <Text
-          accessible={false}
-          aria-hidden
-          style={[s.mark, { color: accent }]}
-        >
-          “
-        </Text>
+        <View style={s.paperHeader}>
+          <Text
+            accessible={false}
+            aria-hidden
+            style={[s.mark, { color: accent }]}
+          >
+            “
+          </Text>
+          {voiceInput}
+        </View>
+        {voiceStatus}
         <View style={s.writingArea}>
           <Text
             aria-hidden
@@ -131,6 +139,11 @@ const s = StyleSheet.create({
     paddingBottom: 4,
   },
   mark: { fontFamily: serif, fontSize: 72, lineHeight: 64, height: 60 },
+  paperHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   closingMark: { textAlign: "right", height: 48 },
   writingArea: { minWidth: 0 },
   measure: { opacity: 0 },

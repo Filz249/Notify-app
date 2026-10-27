@@ -7,11 +7,6 @@
     "userInterfaceStyle": "dark",
     "scheme": "notify",
     "icon": "./assets/icon-only.png",
-    "splash": {
-      "image": "./assets/splash-dark.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#20130D"
-    },
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
@@ -35,7 +30,27 @@
           "enableRemoteNotifications": false
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow Notify to use your microphone while you dictate a note.",
+          "speechRecognitionPermission": "Allow Notify to turn your speech into note text.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts"
+          ]
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#20130D",
+          "image": "./assets/splash-mark.png",
+          "imageWidth": 64,
+          "resizeMode": "contain"
+        }
+      ]
     ]
   }
 }
