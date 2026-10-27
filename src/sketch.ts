@@ -3,34 +3,69 @@ const stroke = (p: string | SketchStroke): SketchStroke =>
   typeof p === "string"
     ? { path: p, color: "#F2B23D", width: 3, style: "solid" }
     : p;
+// Parse stroke geometry once per eraser gesture, not on every touch event.
+export function createStrokeEraser(paths: Note["sketchPaths"]) {
+  let remaining = paths;
+  let geometry = paths.map((p) => {
+    const s = stroke(p);
+    const points = (
+      s.path.match(/[-+]?(?:\d*\.)?\d+(?:e[-+]?\d+)?/gi) || []
+    ).map(Number);
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
+    for (let i = 0; i < points.length; i += 2) {
+      minX = Math.min(minX, points[i]);
+      maxX = Math.max(maxX, points[i]);
+      minY = Math.min(minY, points[i + 1]);
+      maxY = Math.max(maxY, points[i + 1]);
+    }
+    return { p, points, width: s.width, minX, minY, maxX, maxY };
+  });
+  return (x: number, y: number, radius: number) => {
+    const next = geometry.filter((g) => {
+      const threshold = radius + g.width / 2;
+      if (
+        x < g.minX - threshold ||
+        x > g.maxX + threshold ||
+        y < g.minY - threshold ||
+        y > g.maxY + threshold
+      )
+        return true;
+      for (let i = 2; i < g.points.length; i += 2) {
+        const ax = g.points[i - 2],
+          ay = g.points[i - 1],
+          bx = g.points[i],
+          by = g.points[i + 1];
+        const dx = bx - ax,
+          dy = by - ay;
+        const t = Math.max(
+          0,
+          Math.min(
+            1,
+            ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1),
+          ),
+        );
+        if (Math.hypot(x - ax - t * dx, y - ay - t * dy) <= threshold)
+          return false;
+      }
+      return true;
+    });
+    if (next.length !== geometry.length) {
+      geometry = next;
+      remaining = geometry.map((g) => g.p);
+    }
+    return remaining;
+  };
+}
 export function eraseAt(
   paths: Note["sketchPaths"],
   x: number,
   y: number,
   radius: number,
 ): Note["sketchPaths"] {
-  return paths.filter((p) => {
-    const s = stroke(p),
-      numbers = (s.path.match(/[-+]?(?:\d*\.)?\d+(?:e[-+]?\d+)?/gi) || []).map(
-        Number,
-      ),
-      threshold = radius + s.width / 2;
-    for (let i = 2; i < numbers.length; i += 2) {
-      const ax = numbers[i - 2],
-        ay = numbers[i - 1],
-        bx = numbers[i],
-        by = numbers[i + 1],
-        dx = bx - ax,
-        dy = by - ay;
-      const t = Math.max(
-        0,
-        Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)),
-      );
-      if (Math.hypot(x - ax - t * dx, y - ay - t * dy) <= threshold)
-        return false;
-    }
-    return true;
-  });
+  return createStrokeEraser(paths)(x, y, radius);
 }
 const escape = (value: string) =>
   value

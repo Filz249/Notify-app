@@ -1,4 +1,4 @@
-import type { Note } from "./types";
+import type { Note, SketchStroke } from "./types";
 export type Backup = {
   app: "Notify";
   version: 1;
@@ -22,6 +22,28 @@ const finite = (v: unknown) =>
   typeof v === "number" && Number.isFinite(v) && v >= 0;
 const text = (v: unknown, max = 500_000): v is string =>
   typeof v === "string" && v.length <= max;
+const validPaths = (paths: Array<string | SketchStroke>) =>
+  Array.isArray(paths) &&
+  paths.length <= 20000 &&
+  paths.every((p) =>
+    typeof p === "string"
+      ? text(p, 1_000_000) && /^[MLml\d.,eE+\-\s]+$/.test(p)
+      : !!p &&
+        text(p.path, 1_000_000) &&
+        /^[MLml\d.,eE+\-\s]+$/.test(p.path) &&
+        hex(p.color) &&
+        finite(p.width) &&
+        p.width <= 100 &&
+        (!p.style || ["solid", "dashed", "dotted"].includes(p.style)),
+  );
+const validSize = (size: Note["sketchSize"]) =>
+  !!size &&
+  finite(size.width) &&
+  finite(size.height) &&
+  size.width >= 1 &&
+  size.height >= 1 &&
+  size.width <= 10000 &&
+  size.height <= 10000;
 export const cleanTags = (value: string) =>
   [
     ...new Set(
@@ -63,20 +85,33 @@ export function validateNote(value: unknown): Note {
     )
   )
     throw new Error("This backup contains an invalid list item.");
-  if (
-    n.sketchPaths.some((p) =>
-      typeof p === "string"
-        ? !text(p, 1_000_000) || !/^[MLml\d.,eE+\-\s]+$/.test(p)
-        : !p ||
-          !text(p.path, 1_000_000) ||
-          !/^[MLml\d.,eE+\-\s]+$/.test(p.path) ||
-          !hex(p.color) ||
-          !finite(p.width) ||
-          p.width > 100 ||
-          (p.style && !["solid", "dashed", "dotted"].includes(p.style)),
-    )
-  )
+  if (!validPaths(n.sketchPaths))
     throw new Error("This backup contains an invalid sketch.");
+  if (
+    n.drawingOverlays !== undefined &&
+    (!Array.isArray(n.drawingOverlays) ||
+      n.drawingOverlays.length > 20 ||
+      new Set(n.drawingOverlays.map((o) => o?.id)).size !==
+        n.drawingOverlays.length ||
+      n.drawingOverlays.some(
+        (o) =>
+          !o ||
+          !text(o.id, 128) ||
+          !o.id ||
+          !text(o.name, 160) ||
+          !validPaths(o.paths) ||
+          !o.paths.length ||
+          !validSize(o.size) ||
+          !finite(o.width) ||
+          o.width < 0.15 ||
+          o.width > 0.95 ||
+          !finite(o.x) ||
+          o.x > 1 - o.width + 0.000001 ||
+          !finite(o.y) ||
+          o.y > 10000,
+      ))
+  )
+    throw new Error("This backup contains an invalid drawing overlay.");
   for (const field of [
     "reminderAt",
     "snoozedUntil",
@@ -150,6 +185,19 @@ export function validateNote(value: unknown): Note {
       ? n.sketchStyle
       : "solid",
     sketchSize: n.sketchSize,
+    drawingOverlays: n.drawingOverlays?.map((o) => ({
+      id: o.id,
+      name: o.name,
+      x: o.x,
+      y: o.y,
+      width: o.width,
+      size: { width: o.size.width, height: o.size.height },
+      paths: o.paths.map((p) =>
+        typeof p === "string"
+          ? p
+          : { path: p.path, color: p.color, width: p.width, style: p.style },
+      ),
+    })),
     reminderAt: n.reminderAt,
     reminderRepeat: n.reminderRepeat,
     reminderCompletedAt: n.reminderCompletedAt,

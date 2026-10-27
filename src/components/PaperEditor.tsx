@@ -1,8 +1,11 @@
-import React, { useId, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Circle, Defs, Line, Pattern, Rect } from "react-native-svg";
-import type { Note } from "../types";
+import type { DrawingOverlay, Note } from "../types";
 import { layout } from "../layout";
+import { Minus, Plus, Trash2, Check } from "lucide-react-native";
+import { DrawingOverlays } from "./DrawingOverlays";
+import { drawingHeight, placeDrawing } from "../drawings";
 
 export type EditorPalette = {
   bg: string;
@@ -22,6 +25,11 @@ export function PaperEditor({
   palette,
   minHeight,
   placeholder,
+  overlays = [],
+  onOverlaysChange,
+  onDrawingDragChange,
+  voiceInput,
+  voiceStatus,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -30,11 +38,36 @@ export function PaperEditor({
   palette: EditorPalette;
   minHeight: number;
   placeholder: string;
+  overlays?: DrawingOverlay[];
+  onOverlaysChange: (overlays: DrawingOverlay[]) => void;
+  onDrawingDragChange: (dragging: boolean) => void;
+  voiceInput?: React.ReactNode;
+  voiceStatus?: React.ReactNode;
 }) {
   const patternId = useId().replace(/:/g, "");
   const [contentHeight, setContentHeight] = useState(0);
   const [focused, setFocused] = useState(false);
   const [clearedText, setClearedText] = useState<string | null>(null);
+  const [paperWidth, setPaperWidth] = useState(340);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [removed, setRemoved] = useState<DrawingOverlay | null>(null);
+  useEffect(() => {
+    if (!removed) return;
+    const timeout = setTimeout(() => setRemoved(null), 6000);
+    return () => clearTimeout(timeout);
+  }, [removed]);
+  const selectedDrawing = overlays.find((item) => item.id === selected);
+  const paperHeight = Math.max(
+    minHeight,
+    contentHeight,
+    ...overlays.map((item) => item.y + drawingHeight(item, paperWidth) + 20),
+  );
+  const updateOverlay = (id: string, change: Partial<DrawingOverlay>) =>
+    onOverlaysChange(
+      overlays.map((item) =>
+        item.id === id ? placeDrawing(item, change) : item,
+      ),
+    );
 
   return (
     <View
@@ -113,40 +146,47 @@ export function PaperEditor({
             );
           })}
         </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={
-            clearedText !== null && !value
-              ? "Undo clear text"
-              : "Clear note text"
-          }
-          disabled={!value && clearedText === null}
-          onPress={() => {
-            if (clearedText !== null && !value) {
-              onChange(clearedText);
-              setClearedText(null);
-            } else {
-              setClearedText(value);
-              onChange("");
-              setContentHeight(0);
+        <View style={styles.toolbarActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              clearedText !== null && !value
+                ? "Undo clear text"
+                : "Clear note text"
             }
-          }}
-          style={styles.clear}
-        >
-          <Text
-            style={[
-              styles.clearText,
-              {
-                color: palette.muted,
-                opacity: value || clearedText !== null ? 1 : 0.45,
-              },
-            ]}
+            disabled={!value && clearedText === null}
+            onPress={() => {
+              if (clearedText !== null && !value) {
+                onChange(clearedText);
+                setClearedText(null);
+              } else {
+                setClearedText(value);
+                onChange("");
+                setContentHeight(0);
+              }
+            }}
+            style={styles.clear}
           >
-            {clearedText !== null && !value ? "Undo" : "Clear"}
-          </Text>
-        </Pressable>
+            <Text
+              style={[
+                styles.clearText,
+                {
+                  color: palette.muted,
+                  opacity: value || clearedText !== null ? 1 : 0.45,
+                },
+              ]}
+            >
+              {clearedText !== null && !value ? "Undo" : "Clear"}
+            </Text>
+          </Pressable>
+          {voiceInput}
+        </View>
       </View>
-      <View style={styles.paperBody}>
+      {voiceStatus}
+      <View
+        style={styles.paperBody}
+        onLayout={(event) => setPaperWidth(event.nativeEvent.layout.width)}
+      >
         {paperStyle !== "plain" ? (
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <Svg width="100%" height="100%">
@@ -194,7 +234,11 @@ export function PaperEditor({
           multiline
           scrollEnabled={false}
           textAlignVertical="top"
-          onFocus={() => setFocused(true)}
+          onTouchStart={() => setSelected(null)}
+          onFocus={() => {
+            setFocused(true);
+            setSelected(null);
+          }}
           onBlur={() => setFocused(false)}
           onContentSizeChange={(event) =>
             setContentHeight(event.nativeEvent.contentSize.height)
@@ -204,16 +248,154 @@ export function PaperEditor({
             {
               color: palette.cream,
               minHeight,
-              height: Math.max(minHeight, contentHeight),
+              height: paperHeight,
             },
           ]}
         />
+        <DrawingOverlays
+          overlays={overlays}
+          width={paperWidth}
+          height={paperHeight}
+          selected={selected}
+          onSelect={setSelected}
+          onChange={updateOverlay}
+          onDraggingChange={onDrawingDragChange}
+          accent={palette.accent}
+        />
+        {selectedDrawing ? (
+          <View
+            testID="drawing-context-tools"
+            style={[
+              styles.drawingContext,
+              {
+                backgroundColor: palette.panel2,
+                top: Math.max(4, selectedDrawing.y - 48),
+                left: Math.max(
+                  8,
+                  Math.min(
+                    paperWidth - 192,
+                    selectedDrawing.x * paperWidth +
+                      (selectedDrawing.width * paperWidth) / 2 -
+                      92,
+                  ),
+                ),
+              },
+            ]}
+          >
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Make drawing smaller"
+              onPress={() =>
+                updateOverlay(selectedDrawing.id, {
+                  width: selectedDrawing.width - 0.08,
+                })
+              }
+              style={styles.drawingControl}
+            >
+              <Minus size={18} color={palette.cream} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Make drawing larger"
+              onPress={() =>
+                updateOverlay(selectedDrawing.id, {
+                  width: selectedDrawing.width + 0.08,
+                })
+              }
+              style={styles.drawingControl}
+            >
+              <Plus size={18} color={palette.cream} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Remove selected drawing"
+              onPress={() => {
+                setRemoved(selectedDrawing);
+                onOverlaysChange(
+                  overlays.filter((item) => item.id !== selectedDrawing.id),
+                );
+                setSelected(null);
+              }}
+              style={styles.drawingControl}
+            >
+              <Trash2 size={18} color={palette.muted} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Finish moving drawing"
+              onPress={() => setSelected(null)}
+              style={styles.drawingControl}
+            >
+              <Check size={19} color={palette.accent} />
+            </Pressable>
+          </View>
+        ) : null}
+        {removed ? (
+          <View
+            style={[styles.removedToast, { backgroundColor: palette.panel2 }]}
+          >
+            <Text style={{ color: palette.muted, fontSize: 12 }}>
+              Drawing removed
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Undo remove drawing"
+              onPress={() => {
+                onOverlaysChange([...overlays, removed]);
+                setRemoved(null);
+              }}
+              style={styles.undoRemove}
+            >
+              <Text
+                style={{
+                  color: palette.accent,
+                  fontWeight: "600",
+                  fontSize: 12,
+                }}
+              >
+                Undo
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  drawingContext: {
+    position: "absolute",
+    zIndex: 5,
+    width: 184,
+    height: 44,
+    borderRadius: 14,
+    flexDirection: "row",
+    paddingHorizontal: 4,
+  },
+  drawingControl: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  removedToast: {
+    position: "absolute",
+    bottom: 12,
+    left: 12,
+    right: 12,
+    paddingLeft: 14,
+    borderRadius: 12,
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  undoRemove: {
+    minHeight: 44,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+  },
   toolbar: {
     flexDirection: "row",
     alignItems: "center",
@@ -224,6 +406,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   options: { flexDirection: "row", gap: 4 },
+  toolbarActions: { flexDirection: "row", alignItems: "center", gap: 4 },
   option: {
     minHeight: 36,
     paddingHorizontal: 8,

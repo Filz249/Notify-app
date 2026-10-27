@@ -29,8 +29,10 @@ Notify is the Android/iOS mobile app project. It is built with **React Native + 
 - Combined task/checklist notes and dedicated shopping lists with aisle suggestions and price subtotals.
 - Touch sketch canvas with preset colors and a custom color wheel, brightness and hex controls, solid/dashed/dotted strokes, multiple widths, canvas backgrounds, stroke eraser, undo/redo and PNG export.
 - Compact checklists with progress, expandable additional notes and a date/time reminder picker.
-- Three saved appearance themes: Espresso, Midnight and Forest; responsive home layout for different screen sizes.
+- Six saved appearance themes: Espresso, Midnight, Forest, Riviera, Daydream and Strawberry Club; responsive home layout and a theme picker with two rows of three. Daydream pairs pale lavender with warm ivory and plum text, and replaces any saved Golden Hour preference.
+- A randomly chosen startup screen on each launch: Quiet signature, Paper ritual, or Room for ideas. Each has an equal chance, respects reduced motion and opens the library as soon as notes and the saved theme are ready.
 - Automatic draft recovery, separate from saved notes.
+- Croatian and English voice-to-text in writing formats, with an inline microphone, live transcript preview and automatic speech-session recovery during pauses.
 - One-time, daily and weekly local reminders, with 10-minute and 1-hour snooze.
 - JSON backups and safe merge imports, including drafts and Trash.
 - Settings menu with links to check releases and download the latest Android APK (installation is confirmed by Android).
@@ -90,6 +92,18 @@ menu beside **Your notes** to switch to Today or Upcoming. Today includes overdu
 reminders and unfinished lists without a reminder.
 
 Use **Organize** inside an editor to add a collection or comma-separated tags.
+The sketchpad opens a separate drawing workspace with the canvas above the
+color palette, a 1–40 px brush-size slider and compact tools. **Done** returns to
+the scrolling note page; **More** contains stroke styles, canvas backgrounds,
+PNG export and reversible canvas clearing.
+
+Choose **Paste into a note** from a sketch. Drawings paste as transparent overlays
+in note, lyrics, poem or ideas editors. Touch and hold a drawing to drag it;
+size and remove controls appear only while it is selected. Tap the checkmark or
+the note text to finish. Removing an overlay briefly offers Undo. The pasted drawing is an independent copy, so editing
+or deleting its original sketch does not change the note. Overlays are retained
+in draft recovery and JSON backups. Save the destination note as usual.
+
 **Settings → Trash & backups** restores deleted notes and exports/imports JSON.
 Imports keep existing data: identical records are skipped and conflicts become
 separate copies. Imported reminders stay paused until each note is saved. Trash
@@ -102,6 +116,37 @@ package.json and app.json.
 
 Run `npm test` for reminder scheduling, recurrence, draft persistence, safe backup
 merging, agenda filtering, eraser geometry, image markup and color checks.
+
+### Dictating a note
+
+In Notes, Ideas, Poems, Lyrics, and Quotes, tap the **microphone icon** inside
+the writing area and allow microphone/speech recognition access. Tap the
+**stop icon** to finish. Choose **Hrvatski** or **English** in **Settings →
+Dictation language**; the choice is remembered. Finalized phrases are appended
+without replacing existing text. A small status and live preview appear only
+while dictating. Tasks, shopping lists, and sketches do not show voice controls.
+
+Save and Back finish dictation before saving the draft, including the last phrase.
+Recording also stops when Notify goes into the background or its browser tab is
+hidden. Speech-service timeouts and silence restart recognition while the session
+remains active. Older Android speech services may have a brief gap between
+utterances; service, connection or permission failures stop with an explanation.
+
+This uses [expo-speech-recognition](https://github.com/jamsch/expo-speech-recognition)
+57.x and requires a **new native app build**, not Expo Go or just a JavaScript
+reload. The Expo plugin configures Android microphone permission and speech-service
+visibility, plus iOS microphone/speech recognition descriptions. Browser preview
+requires HTTPS or localhost and a browser with the Web Speech API, such as Chrome
+or Safari. Language availability and accuracy depend on the device’s speech
+service, including Croatian support. A network connection may be required and
+the system speech provider may process audio remotely. Notify saves the resulting
+text with the note and does not retain audio recordings.
+
+Before shipping a native release, test both languages on a physical device:
+permission grant/denial, long pauses, multiple phrases, stopping then starting again,
+Save and Back during speech, backgrounding, and connection loss. Automated tests
+cover session recovery, transcript handling and final-text preservation, but do
+not measure real microphone transcription accuracy.
 
 ## Project layout
 

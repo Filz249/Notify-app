@@ -8,7 +8,8 @@ export const hasContent = (note: Note) =>
     note.body.trim() ||
     note.quoteAuthor?.trim() ||
     note.items.length ||
-    note.sketchPaths.length
+    note.sketchPaths.length ||
+    note.drawingOverlays?.length
   );
 export async function loadDrafts(): Promise<Note[]> {
   const result = JSON.parse(await getSetting("drafts-v1", "[]"));

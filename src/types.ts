@@ -17,6 +17,17 @@ export type SketchStroke = {
   style?: "solid" | "dashed" | "dotted";
 };
 
+export type DrawingOverlay = {
+  id: string;
+  name: string;
+  paths: Array<string | SketchStroke>;
+  size: { width: number; height: number };
+  // Horizontal placement and width are fractions of the note paper's width.
+  x: number;
+  y: number;
+  width: number;
+};
+
 export type ListItem = {
   id: string;
   text: string;
@@ -53,4 +64,5 @@ export type Note = {
   sketchWidth?: number;
   sketchStyle?: "solid" | "dashed" | "dotted";
   sketchSize?: { width: number; height: number };
+  drawingOverlays?: DrawingOverlay[];
 };

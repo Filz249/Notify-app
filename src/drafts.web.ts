@@ -6,7 +6,8 @@ export const hasContent = (note: Note) =>
     note.body.trim() ||
     note.quoteAuthor?.trim() ||
     note.items.length ||
-    note.sketchPaths.length
+    note.sketchPaths.length ||
+    note.drawingOverlays?.length
   );
 const read = (): Note[] => JSON.parse(localStorage.getItem(KEY) || "[]");
 export async function loadDrafts() {
